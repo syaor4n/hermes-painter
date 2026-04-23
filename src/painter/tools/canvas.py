@@ -248,10 +248,19 @@ def tool_dump_gaps(args: dict) -> dict:
     path = _DUMP_DIR / "painter_gaps.png"
     gap_img.save(path, format="PNG")
 
+    # Also return the mask as base64 so clients can skip the shared-/tmp
+    # file read — avoids cross-session contamination risk. The file is
+    # still written for callers that have a legacy consumer (e.g. an agent
+    # that wants to Read it directly).
+    buf = _io.BytesIO()
+    gap_img.save(buf, format="PNG")
+    mask_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
     coverage_raw = float(1.0 - looks_unpainted.sum() / looks_unpainted.size)
     effective_coverage = float(1.0 - true_gap.sum() / true_gap.size)
     return {
         "path": str(path),
+        "mask_png": mask_b64,
         "coverage": round(effective_coverage, 3),
         "coverage_raw": round(coverage_raw, 3),
         "gap_pixels": int(true_gap.sum()),

@@ -74,8 +74,15 @@ def fill_gaps_with_grid(grid, cell_w, cell_h, seed=1):
 
     with urllib.request.urlopen(_viewer_base() + '/api/state') as r:
         pass  # confirm reachable
-    post('dump_gaps', {})
-    mask = Image.open('/tmp/painter_gaps.png').convert('L')
+    result = post('dump_gaps', {})
+    mask_b64 = result.get('mask_png') if isinstance(result, dict) else None
+    if mask_b64:
+        import base64 as _b64
+        import io as _io
+        mask = Image.open(_io.BytesIO(_b64.b64decode(mask_b64))).convert('L')
+    else:
+        # Legacy path: older tool servers only wrote the file.
+        mask = Image.open(result.get('path', '/tmp/painter_gaps.png')).convert('L')
     m = np.asarray(mask)  # 255 = gap, 0 = covered
     random.seed(seed)
     strokes = []

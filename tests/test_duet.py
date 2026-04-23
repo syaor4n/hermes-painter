@@ -159,18 +159,27 @@ def test_pick_cells_returns_empty_when_budget_zero():
 
 def test_turn_opening_packages_result(tmp_path, monkeypatch):
     """_turn_opening calls auto_paint, snapshots, dumps canvas."""
-    from paint_lib import duet
+    from paint_lib import core, duet
 
     calls = {"auto_paint": 0, "posts": []}
     def fake_auto_paint(target, **kwargs):
         calls["auto_paint"] += 1
-        from PIL import Image
-        Image.new("RGB", (512, 512), (255, 0, 0)).save("/tmp/painter_canvas.png")
         return {"final_score": {"ssim": 0.42}, "underpaint_strokes": 1728,
                 "edge_strokes": 80, "mid_detail_strokes": 100,
                 "fine_detail_strokes": 50, "contour_strokes": 20,
                 "highlight_strokes": 10}
     monkeypatch.setattr(duet, "_auto_paint", fake_auto_paint)
+
+    # _copy_canvas now reads the canvas from /api/state via
+    # paint_lib.core._read_canvas_bytes (no more /tmp side channel).
+    from io import BytesIO
+
+    from PIL import Image
+    def fake_read_canvas_bytes():
+        buf = BytesIO()
+        Image.new("RGB", (512, 512), (255, 0, 0)).save(buf, format="PNG")
+        return buf.getvalue()
+    monkeypatch.setattr(core, "_read_canvas_bytes", fake_read_canvas_bytes)
 
     def fake_post(tool, payload=None):
         calls["posts"].append((tool, payload))

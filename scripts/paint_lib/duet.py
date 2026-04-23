@@ -271,11 +271,23 @@ def _current_ssim(target: str, post_fn=None) -> float | None:
 
 
 def _copy_canvas(dst: Path) -> None:
-    import shutil
-    src = Path("/tmp/painter_canvas.png")
-    if src.exists():
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dst)
+    """Snapshot the current viewer canvas to `dst`.
+
+    Reads the canvas bytes from /api/state (base64) rather than copying the
+    shared /tmp/painter_canvas.png dump. Eliminates cross-session
+    contamination risk when multiple paint processes share /tmp.
+    """
+    from .core import _read_canvas_bytes
+
+    try:
+        canvas_bytes = _read_canvas_bytes()
+    except Exception as e:
+        _warn(f"_copy_canvas: fetch canvas failed: {e}")
+        return
+    if canvas_bytes is None:
+        return
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(canvas_bytes)
 
 
 def _persona_cell_mask(cells: list[dict], out_dir: Path,

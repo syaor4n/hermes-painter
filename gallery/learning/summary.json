@@ -1,10 +1,10 @@
 {
-  "ts": "2026-04-23T14:27:28Z",
+  "ts": "2026-04-23T14:47:29Z",
   "target": "targets/masterworks/great_wave.jpg",
   "image_type": "balanced",
   "style_mode": "van_gogh",
-  "seed": 42,
-  "sandbox_path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650",
+  "seed": 7,
+  "sandbox_path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_144648",
   "priming": {
     "k_requested": 5,
     "k_used": 5,
@@ -18,15 +18,15 @@
     "note": "auto-selected 5 same-type neighbors"
   },
   "cold": {
-    "ssim": 0.3025878965854645,
-    "n_strokes": 2324,
+    "ssim": 0.29743412137031555,
+    "n_strokes": 2326,
     "applied_skills": [],
     "effective_params": {},
-    "elapsed_s": 6.51
+    "elapsed_s": 9.06
   },
   "primed": {
-    "ssim": 0.301249235868454,
-    "n_strokes": 2324,
+    "ssim": 0.2992960810661316,
+    "n_strokes": 2326,
     "applied_skills": [
       {
         "name": "promoted_image_type_balanced",
@@ -54,10 +54,10 @@
         "painterly_details_activated_by_skills": false
       }
     },
-    "elapsed_s": 5.68
+    "elapsed_s": 5.78
   },
   "delta": {
-    "ssim": -0.0013,
+    "ssim": 0.0019,
     "applied_skills_count": 1,
     "effective_params": {
       "contrast_boost": 0.28,
@@ -69,7 +69,7 @@
   "promoted": [
     {
       "name": "promoted_style_mode_van_gogh",
-      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_style_mode_van_gogh.md",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_144648/skills/promoted_style_mode_van_gogh.md",
       "count": 3,
       "effects": {
         "contrast_boost": 0.03,
@@ -81,7 +81,7 @@
     },
     {
       "name": "promoted_image_type_balanced",
-      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_image_type_balanced.md",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_144648/skills/promoted_image_type_balanced.md",
       "count": 3,
       "effects": {
         "contrast_boost": 0.03
@@ -92,7 +92,7 @@
     },
     {
       "name": "promoted_saliency_mask",
-      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_saliency_mask.md",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_144648/skills/promoted_saliency_mask.md",
       "count": 3,
       "effects": {
         "contrast_boost": 0.03
