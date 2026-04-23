@@ -1,0 +1,44 @@
+[
+  {
+    "slug": "caravaggio_van_gogh_to_tenebrism",
+    "target": "targets/masterworks/caravaggio_resurrection.jpg",
+    "schedule": {
+      "start": "van_gogh",
+      "end": "tenebrism",
+      "rationale": "warm dramatic portrait \u2014 expressive open, dramatic close"
+    },
+    "ssim": 0.21724115312099457,
+    "coverage": 1.0,
+    "duration_s": 4.9,
+    "underpaint_strokes": 3072,
+    "control_ssim": 0.26859307289123535
+  },
+  {
+    "slug": "mona_lisa_van_gogh_to_tenebrism",
+    "target": "targets/masterworks/mona_lisa.jpg",
+    "schedule": {
+      "start": "van_gogh",
+      "end": "tenebrism",
+      "rationale": "classical portrait reinterpreted through expressive\u2192dramatic arc"
+    },
+    "ssim": 0.3209262788295746,
+    "coverage": 0.991,
+    "duration_s": 3.5,
+    "underpaint_strokes": 1728,
+    "control_ssim": 0.28589800000190735
+  },
+  {
+    "slug": "great_wave_van_gogh_to_pointillism",
+    "target": "targets/masterworks/great_wave.jpg",
+    "schedule": {
+      "start": "van_gogh",
+      "end": "pointillism",
+      "rationale": "texture \u2192 dot translation on a famously textured subject"
+    },
+    "ssim": 0.28657016158103943,
+    "coverage": 0.998,
+    "duration_s": 4.6,
+    "underpaint_strokes": 1728,
+    "control_ssim": 0.2926448881626129
+  }
+]

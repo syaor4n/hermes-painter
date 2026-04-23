@@ -1,0 +1,2020 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hermes Painter — Live Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;1,9..144,300&family=Geist:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #e8dec7;
+    --ink-soft: #b9ac93;
+    --ink-mute: #8b7d66;
+    --ink-faint: #5c5141;
+    --brass: #c9a35f;
+    --brass-hi: #d9b371;
+    --sage: #7fb581;
+    --clay: #c46a5a;
+    --paper: #fbf7ee;
+    --room: #1a1510;
+    --room-2: #241c14;
+    --line: rgba(201,163,95,0.18);
+    --line-faint: rgba(201,163,95,0.08);
+    --panel: rgba(22,16,11,0.72);
+  }
+
+  html, body { background: var(--room); color: var(--ink); }
+  body {
+    font-family: 'Geist', -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    font-weight: 400;
+    min-height: 100vh;
+    padding: 12px 20px 24px;
+    background:
+      radial-gradient(1200px 800px at 20% -10%, rgba(201,163,95,0.06), transparent 60%),
+      radial-gradient(900px 700px at 110% 110%, rgba(201,163,95,0.04), transparent 50%),
+      var(--room);
+  }
+
+  /* === Topbar ====================================================== */
+  .topbar {
+    max-width: 1600px; margin: 0 auto 8px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 24px;
+  }
+  .wordmark {
+    font-family: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+    font-weight: 300; font-size: 30px; letter-spacing: 0.005em;
+    color: var(--ink); line-height: 1;
+  }
+  .wordmark em {
+    font-style: italic; font-weight: 300; color: var(--brass);
+  }
+  .topbar .right {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-mute);
+    display: flex; align-items: center; gap: 18px;
+  }
+  .topbar .live { color: var(--sage); display: inline-flex; align-items: center; gap: 6px; }
+  .topbar .live::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--sage); box-shadow: 0 0 10px var(--sage);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  /* === Scene (studio stage) ======================================== */
+  .scene-wrap {
+    max-width: 1600px;
+    margin: 0 auto;
+    aspect-ratio: 3 / 2;
+    max-height: calc(100vh - 80px);
+    border-radius: 12px;
+    position: relative;
+    overflow: hidden;
+    background: #211911 url('assets/studio.jpg') center/cover no-repeat;
+    box-shadow:
+      0 32px 70px -28px rgba(0,0,0,0.75),
+      0 0 0 1px rgba(201,163,95,0.09);
+  }
+
+  /* Canvas slot — seated on the easel in the photo */
+  .easel-slot {
+    position: absolute;
+    left: 28.5%;
+    top: 18.4%;
+    width: 24%;
+    aspect-ratio: 1 / 1;
+  }
+  .easel-slot canvas {
+    width: 100%; height: 100%;
+    display: block;
+    background: var(--paper);
+    cursor: crosshair;
+    /* subtle drop shadow to seat on easel ledge */
+    filter: drop-shadow(0 6px 12px rgba(0,0,0,0.28));
+  }
+
+  /* Target slot — hanging on the wall frame in the photo */
+  .wall-slot {
+    position: absolute;
+    left: 55.5%;
+    top: 6.4%;
+    width: 27%;
+    aspect-ratio: 1 / 1;
+  }
+  .wall-slot img, .wall-slot .no-target {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+  }
+  .wall-slot img {
+    object-fit: cover;
+    background: var(--paper);
+    filter: drop-shadow(0 4px 10px rgba(0,0,0,0.22));
+  }
+  .wall-slot .no-target {
+    background: rgba(251,247,238,0.88);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-mute);
+    text-align: center; padding: 18px;
+  }
+
+  /* Phase label — floats over the easel canvas */
+  .phase-overlay {
+    position: absolute; inset: auto 0 8px 0; margin: 0 10%;
+    padding: 6px 12px;
+    background: rgba(26,21,16,0.82);
+    color: var(--brass);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase;
+    border-radius: 3px; text-align: center;
+    backdrop-filter: blur(4px);
+    display: none;
+  }
+  .phase-overlay.active { display: block; }
+
+  /* Scene label chips (subtle annotations near each slot) */
+  .chip {
+    position: absolute;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: var(--brass);
+    background: rgba(26,21,16,0.78);
+    padding: 4px 9px; border-radius: 3px;
+    backdrop-filter: blur(4px);
+    pointer-events: none;
+  }
+  .chip-easel { left: 28.5%; top: calc(18.4% - 26px); }
+  .chip-wall  { left: 55.5%; top: calc(6.4% - 26px); }
+
+  /* === Below-scene grid ============================================ */
+  .lower {
+    max-width: 1320px; margin: 22px auto 0;
+    display: grid; grid-template-columns: 400px 1fr; gap: 20px;
+  }
+  .col-controls { display: flex; flex-direction: column; gap: 14px; }
+  .col-history  { display: flex; flex-direction: column; gap: 14px; }
+
+  /* Card */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 16px 18px;
+    backdrop-filter: blur(20px) saturate(1.08);
+    -webkit-backdrop-filter: blur(20px) saturate(1.08);
+  }
+  .card h3, .card-head .h {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10px; letter-spacing: 0.24em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 500;
+    margin-bottom: 12px;
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 14px;
+    margin-bottom: 12px; flex-wrap: wrap;
+  }
+  .card-head .h { margin-bottom: 0; }
+
+  /* Stats */
+  .stat-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 4px 0;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    border-bottom: 1px dashed var(--line-faint);
+  }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-row .label { color: var(--ink-mute); letter-spacing: 0.1em; text-transform: uppercase; font-size: 10px; }
+  .stat-row .val { color: var(--brass); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .stat-row .val.good { color: var(--sage); }
+  .stat-row .val.bad { color: var(--clay); }
+
+  /* Buttons */
+  .btn {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    background: transparent; color: var(--brass);
+    border: 1px solid rgba(201,163,95,0.45);
+    padding: 7px 13px; border-radius: 4px; cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  }
+  .btn:hover { background: var(--brass); color: var(--room); border-color: var(--brass); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: var(--brass); color: var(--room); border-color: var(--brass); font-weight: 600; }
+  .btn.primary:hover { background: var(--brass-hi); border-color: var(--brass-hi); }
+  .btn.danger { color: var(--clay); border-color: rgba(196,106,90,0.5); }
+  .btn.danger:hover { background: var(--clay); color: var(--room); border-color: var(--clay); }
+  .btn[disabled], .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* Form controls */
+  label.field { display: block; margin-bottom: 10px; }
+  label.field > span {
+    display: block; margin-bottom: 4px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--ink-mute);
+  }
+  select, textarea, input[type="text"] {
+    width: 100%;
+    background: rgba(26,21,16,0.7);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 11.5px;
+    padding: 8px 10px;
+  }
+  select { cursor: pointer; }
+  textarea { resize: vertical; min-height: 64px; line-height: 1.5; }
+  select:focus, textarea:focus, input:focus { outline: none; border-color: var(--brass); }
+
+  .upload-btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: transparent; color: var(--brass);
+    border: 1px solid rgba(201,163,95,0.45);
+    padding: 7px 13px; border-radius: 4px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+    cursor: pointer;
+  }
+  .upload-btn:hover { background: var(--brass); color: var(--room); }
+  .target-name {
+    color: var(--sage); font-size: 11px; margin-top: 8px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .hint { display: block; margin-top: 10px; font-size: 10.5px; color: var(--ink-mute); }
+  .hint input { vertical-align: middle; accent-color: var(--brass); margin-right: 6px; }
+
+  /* Gallery (test images) */
+  #gallery { display: flex; flex-wrap: wrap; gap: 6px; }
+  #gallery > div {
+    cursor: pointer; width: 56px; height: 56px; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--line); position: relative; transition: border-color 0.15s;
+  }
+  #gallery > div:hover { border-color: var(--brass); }
+  #gallery img { width: 56px; height: 56px; object-fit: cover; display: block; }
+
+  /* Dimensional effects */
+  .dim-slider-row {
+    display: flex; align-items: center; gap: 10px;
+    margin: 6px 0; padding: 2px 0;
+  }
+  .dim-label {
+    color: var(--ink-mute);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase;
+    width: 130px; flex-shrink: 0;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dim-slider-row input[type="range"] {
+    flex: 1; accent-color: var(--brass);
+    height: 3px; cursor: pointer;
+  }
+  .dim-val {
+    color: var(--brass); font-variant-numeric: tabular-nums;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; width: 36px; text-align: right; flex-shrink: 0;
+  }
+  .dim-status {
+    color: var(--ink-mute); font-size: 10px; margin-top: 10px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    min-height: 14px; line-height: 1.5; word-break: break-word;
+  }
+  .dim-status.ok { color: var(--sage); }
+  .dim-status.err { color: var(--clay); }
+
+  /* History strip */
+  .strip {
+    display: flex; gap: 10px; overflow-x: auto; padding: 6px 2px 10px;
+    scroll-snap-type: x proximity;
+  }
+  .strip::-webkit-scrollbar { height: 8px; }
+  .strip::-webkit-scrollbar-track { background: rgba(0,0,0,0.25); border-radius: 4px; }
+  .strip::-webkit-scrollbar-thumb { background: rgba(201,163,95,0.3); border-radius: 4px; }
+  .strip::-webkit-scrollbar-thumb:hover { background: var(--brass); }
+  .tile {
+    flex: 0 0 auto; width: 120px;
+    background: rgba(251,247,238,0.03);
+    border: 1.5px solid var(--line);
+    border-radius: 5px; overflow: hidden;
+    cursor: pointer; position: relative;
+    transition: transform 0.12s ease, border-color 0.15s ease;
+    scroll-snap-align: start;
+  }
+  .tile:hover { border-color: var(--brass); transform: translateY(-2px); }
+  .tile.active { border-color: var(--sage); }
+  .tile img { width: 116px; height: 116px; display: block; background: var(--paper); }
+  .tile .meta {
+    padding: 5px 7px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9.5px; color: var(--ink-mute);
+    display: flex; justify-content: space-between;
+  }
+  .tile .meta .n { color: var(--brass); font-weight: 600; }
+  .tile .meta .n.good { color: var(--sage); }
+  .tile .meta .n.bad { color: var(--clay); }
+  .tile .badge {
+    position: absolute; top: 5px; right: 5px;
+    background: rgba(26,21,16,0.9); color: var(--brass);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9px; padding: 2px 6px; border-radius: 3px; letter-spacing: 0.06em;
+  }
+  .tile .phase {
+    position: absolute; bottom: 26px; left: 5px; right: 5px;
+    background: rgba(26,21,16,0.85); color: var(--ink);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 8.5px; padding: 2px 5px; border-radius: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .tile.slot-a { border-color: var(--sage) !important; box-shadow: 0 0 0 2px var(--sage) inset; }
+  .tile.slot-b { border-color: var(--brass-hi) !important; box-shadow: 0 0 0 2px var(--brass-hi) inset; }
+  .tile.slot-a::before, .tile.slot-b::before {
+    position: absolute; top: 5px; left: 5px;
+    background: rgba(26,21,16,0.9);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 9px; font-weight: 700; padding: 2px 6px;
+    border-radius: 3px; z-index: 2;
+  }
+  .tile.slot-a::before { content: 'A'; color: var(--sage); }
+  .tile.slot-b::before { content: 'B'; color: var(--brass-hi); }
+
+  .empty {
+    color: var(--ink-faint); font-size: 11px; padding: 28px 18px;
+    text-align: center;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .reason-row {
+    color: var(--ink-mute); font-size: 10.5px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    padding: 8px 2px 0; min-height: 16px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .snap-count {
+    color: var(--sage); font-size: 10.5px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: 0.08em;
+  }
+  .speed-wrap {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--ink-mute); font-size: 10px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .speed-wrap input[type="range"] { width: 90px; accent-color: var(--brass); }
+  .speed-wrap .val { color: var(--brass); min-width: 28px; text-align: right; }
+
+  .spacer { flex: 1; }
+
+
+  /* Compare modal */
+  .compare-modal {
+    display: none; position: fixed; inset: 0;
+    background: rgba(10,7,5,0.94);
+    z-index: 200; justify-content: center; align-items: center;
+    flex-direction: column; gap: 14px;
+    backdrop-filter: blur(6px);
+  }
+  .compare-modal.active { display: flex; }
+  .compare-modal .pair { display: flex; gap: 14px; }
+  .compare-modal .pane { position: relative; }
+  .compare-modal .pane img {
+    width: 480px; height: 480px;
+    border: 1px solid var(--line); border-radius: 6px;
+    background: var(--paper);
+  }
+  .compare-modal .pane .label {
+    position: absolute; bottom: 8px; left: 10px;
+    background: rgba(26,21,16,0.88); color: var(--brass);
+    padding: 4px 10px; border-radius: 3px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px; letter-spacing: 0.1em;
+  }
+  .compare-modal .close {
+    position: absolute; top: 22px; right: 26px;
+    color: var(--ink-mute); font-size: 30px; cursor: pointer;
+    font-family: 'Fraunces', serif; font-weight: 300; line-height: 1;
+  }
+  .compare-modal .close:hover { color: var(--brass); }
+  .compare-modal .hint { color: var(--ink-mute); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  /* Responsive */
+  @media (max-width: 1040px) {
+    .lower { grid-template-columns: 1fr; }
+    .scene-wrap { max-height: none; }
+    body { padding: 20px 16px 32px; }
+  }
+  @media (max-width: 680px) {
+    .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+    .wordmark { font-size: 24px; }
+    .chip-easel, .chip-wall { display: none; }
+  }
+
+  /* === Preset grid (inside Paint card) ============================== */
+  .preset-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 10px 0;
+  }
+  .preset-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 4px 5px;
+    background: rgba(26, 21, 16, 0.55);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--ink);
+    font-family: 'Geist', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms;
+  }
+  .preset-tile:hover:not(:disabled) {
+    border-color: var(--brass);
+    background: rgba(201, 163, 95, 0.10);
+  }
+  .preset-tile.active {
+    border-color: var(--brass);
+    background: rgba(201, 163, 95, 0.18);
+    box-shadow: 0 0 0 1px var(--brass);
+  }
+  .preset-tile img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 3px;
+    display: block;
+  }
+  .preset-tile span {
+    font-size: 9.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+  }
+  .preset-grid.busy .preset-tile {
+    opacity: 0.4;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+  /* === Morph card =================================================== */
+  .card.morph .card-hint {
+    font-family: 'Geist', sans-serif;
+    font-size: 11.5px;
+    color: var(--ink-mute);
+    margin: -4px 0 10px;
+    letter-spacing: 0.02em;
+  }
+  .card.morph .field + .field {
+    margin-top: 8px;
+  }
+  .card.morph .btn-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .morph-rationale {
+    margin: 10px 0;
+    padding: 8px 10px;
+    border-left: 2px solid var(--brass);
+    background: rgba(201, 163, 95, 0.06);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 12.5px;
+    line-height: 1.45;
+    color: var(--ink);
+    letter-spacing: 0.01em;
+  }
+  .morph-rationale[hidden] {
+    display: none;
+  }
+  .card.busy select,
+  .card.busy button {
+    opacity: 0.5;
+    pointer-events: none;
+    cursor: not-allowed;
+  }
+  /* === Duet card ==================================================== */
+  .card.duet .slider-field {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card.duet .slider-field > span:first-child {
+    flex: 0 0 auto;
+  }
+  .card.duet .slider-field input[type="range"] {
+    flex: 1;
+    accent-color: var(--brass);
+  }
+  .card.duet .slider-field .slider-val {
+    min-width: 24px;
+    color: var(--brass);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  /* === Zoom modal ==================================================== */
+  .zoom-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 7, 4, 0.92);
+    backdrop-filter: blur(12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    padding: 40px;
+    z-index: 1000;
+  }
+  .zoom-modal[hidden] { display: none; }
+  .zoom-close {
+    position: absolute;
+    top: 20px; right: 28px;
+    font-size: 32px;
+    color: var(--ink-mute);
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: color 120ms;
+  }
+  .zoom-close:hover { color: var(--brass); }
+  .zoom-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1 1 0;
+    max-width: calc(50vw - 60px);
+    max-height: calc(100vh - 120px);
+    align-items: center;
+    min-width: 0;
+  }
+  .zoom-pane canvas, .zoom-pane img {
+    width: min(100%, calc(100vh - 140px));
+    aspect-ratio: 1 / 1;
+    height: auto;
+    object-fit: contain;
+    background: var(--paper);
+    border-radius: 4px;
+    box-shadow: 0 24px 60px -20px rgba(0,0,0,0.6);
+    image-rendering: auto;
+  }
+  .zoom-label {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--brass);
+    text-align: center;
+  }
+
+  /* Cursor affordance on the atelier slots */
+  .easel-slot canvas { cursor: zoom-in; }
+  .wall-slot img    { cursor: zoom-in; }
+</style>
+</head>
+<body>
+
+<!-- === Topbar ========================================================= -->
+<header class="topbar">
+  <div class="wordmark">Hermes <em>Painter</em></div>
+  <div class="right">
+    <span id="target-label-top" class="target-label-top"></span>
+    <span class="live">Live</span>
+  </div>
+</header>
+
+
+<!-- === Studio scene =================================================== -->
+<div class="scene-wrap">
+  <span class="chip chip-easel">Canvas · Current</span>
+  <span class="chip chip-wall">Target</span>
+
+  <!-- Canvas on easel -->
+  <div class="easel-slot">
+    <canvas id="canvas" width="512" height="512"></canvas>
+    <div class="phase-overlay" id="phase-overlay"></div>
+  </div>
+
+  <!-- Target on wall -->
+  <div class="wall-slot">
+    <img id="target" width="512" height="512" style="display:none" alt="target">
+    <div id="no-target" class="no-target">
+      Upload an image<br>or pick a test target →
+    </div>
+  </div>
+</div>
+
+<!-- === Below-scene: controls + history ================================ -->
+<div class="lower">
+
+  <div class="col-controls">
+
+    <!-- Test Images (moved to top — primary entry point) -->
+    <section class="card">
+      <h3>Test Images</h3>
+      <div id="gallery"></div>
+    </section>
+
+    <!-- Upload (paired with Test Images — alternate target source) -->
+    <section class="card">
+      <h3>Upload Image</h3>
+      <label class="upload-btn" for="file-input">Choose file</label>
+      <input type="file" id="file-input" accept="image/*" style="display:none" onchange="uploadFile(this)">
+      <div class="target-name" id="target-name"></div>
+      <label class="hint">
+        <input type="checkbox" id="fit-letterbox">Preserve aspect (letterbox non-square)
+      </label>
+    </section>
+
+    <!-- Paint (primary action — style + presets + Paint this image) -->
+    <section class="card">
+      <h3>Paint</h3>
+      <label class="field">
+        <span>Style mode</span>
+        <select id="style-mode">
+          <option value="balanced" selected>balanced (default v10)</option>
+          <option value="tight">tight (more details, more contrast)</option>
+          <option value="loose">loose (fewer finitions, more impressionist)</option>
+          <option value="segmented">segmented (posterized per-region palette)</option>
+        </select>
+      </label>
+      <div class="preset-grid" id="preset-bar" aria-label="Quick-pick style presets">
+        <button class="preset-tile" data-personality="" onclick="startPresetPaint(this)" title="Classical (default)">
+          <img src="/gallery/hero.png" alt="" width="48" height="48">
+          <span>Classical</span>
+        </button>
+        <button class="preset-tile" data-personality="van_gogh" onclick="startPresetPaint(this)" title="Van Gogh — expressive impasto">
+          <img src="/gallery/the_bedroom_van_gogh.png" alt="" width="48" height="48">
+          <span>Van Gogh</span>
+        </button>
+        <button class="preset-tile" data-personality="tenebrism" onclick="startPresetPaint(this)" title="Tenebrism — dramatic chiaroscuro">
+          <img src="/gallery/caravaggio_tenebrism.png" alt="" width="48" height="48">
+          <span>Tenebrism</span>
+        </button>
+        <button class="preset-tile" data-personality="pointillism" onclick="startPresetPaint(this)" title="Pointillist — dots of pure color">
+          <img src="/gallery/seurat_pointillism.png" alt="" width="48" height="48">
+          <span>Pointillist</span>
+        </button>
+        <button class="preset-tile" data-personality="engraving" onclick="startPresetPaint(this)" title="Engraving — crosshatched lines">
+          <img src="/gallery/great_wave_default.png" alt="" width="48" height="48">
+          <span>Engraving</span>
+        </button>
+        <button class="preset-tile" data-personality="lumiere_doree" onclick="startPresetPaint(this)" title="Golden Hour (community style)">
+          <img src="/gallery/hero.png" alt="" width="48" height="48">
+          <span>Golden Hour</span>
+        </button>
+      </div>
+      <div class="btn-row">
+        <button class="btn primary" id="paint-btn" onclick="startPainting()">Paint this image</button>
+        <button class="btn" id="poll-btn" onclick="togglePoll()">Pause</button>
+        <button class="btn" onclick="downloadCanvas()" title="Download the current canvas as PNG">Download</button>
+        <button class="btn danger" onclick="clearCanvas()">Clear</button>
+      </div>
+    </section>
+
+    <!-- Stats (moved below Paint — live metrics during/after a run) -->
+    <section class="card">
+      <h3>Stats</h3>
+      <div class="stat-row"><span class="label">Target</span><span class="val" id="target-label">—</span></div>
+      <div class="stat-row"><span class="label">Iteration</span><span class="val" id="iter">0</span></div>
+      <div class="stat-row"><span class="label">Strokes</span><span class="val" id="strokes">0</span></div>
+      <div class="stat-row"><span class="label">SSIM</span><span class="val" id="ssim">—</span></div>
+      <div class="stat-row"><span class="label">MSE</span><span class="val" id="mse">—</span></div>
+      <div class="stat-row"><span class="label">Composite</span><span class="val" id="composite">—</span></div>
+    </section>
+
+    <!-- Morph -->
+    <section class="card morph" id="morph-card">
+      <h3>Morph</h3>
+      <p class="card-hint">Paint in a blend of two styles.</p>
+      <label class="field">
+        <span>Start</span>
+        <select id="morph-start" onchange="updateMorphPaintEnabled()">
+          <option disabled selected value="">Pick a style</option>
+          <option value="default">Classical</option>
+          <option value="van_gogh">Van Gogh</option>
+          <option value="tenebrism">Tenebrism</option>
+          <option value="pointillism">Pointillist</option>
+          <option value="engraving">Engraving</option>
+          <option value="lumiere_doree">Golden Hour</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>End</span>
+        <select id="morph-end" onchange="updateMorphPaintEnabled()">
+          <option disabled selected value="">Pick a style</option>
+          <option value="default">Classical</option>
+          <option value="van_gogh">Van Gogh</option>
+          <option value="tenebrism">Tenebrism</option>
+          <option value="pointillism">Pointillist</option>
+          <option value="engraving">Engraving</option>
+          <option value="lumiere_doree">Golden Hour</option>
+        </select>
+      </label>
+      <div class="btn-row">
+        <button class="btn" id="morph-suggest-btn" onclick="suggestMorph()">Suggest for this target</button>
+        <div class="morph-rationale" id="morph-rationale" hidden></div>
+        <button class="btn primary" id="morph-paint-btn" onclick="startMorphPaint()" disabled>Paint morph</button>
+      </div>
+    </section>
+
+    <!-- Duet -->
+    <section class="card duet" id="duet-card">
+      <h3>Duet</h3>
+      <p class="card-hint">Two personas alternate turns.</p>
+      <label class="field">
+        <span>Persona A</span>
+        <select id="duet-persona-a" onchange="updateDuetEnabled()" disabled>
+          <option disabled selected value="">Loading personas…</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Persona B</span>
+        <select id="duet-persona-b" onchange="updateDuetEnabled()" disabled>
+          <option disabled selected value="">Loading personas…</option>
+        </select>
+      </label>
+      <label class="field slider-field">
+        <span>Max turns</span>
+        <input type="range" id="duet-max-turns" min="2" max="20" step="1" value="6"
+               oninput="document.getElementById('duet-max-turns-val').textContent = this.value">
+        <span class="slider-val" id="duet-max-turns-val">6</span>
+      </label>
+      <div class="btn-row">
+        <button class="btn primary" id="duet-start-btn" onclick="startDuet()" disabled>Start duet</button>
+      </div>
+    </section>
+
+    <!-- Dimensional Effects -->
+    <section class="card">
+      <h3>Dimensional Effects</h3>
+      <div class="dim-slider-row">
+        <span class="dim-label" title="contrast_boost [0.0–0.5]">contrast_boost</span>
+        <input type="range" id="dim-contrast_boost" min="0" max="0.5" step="0.01" value="0.25">
+        <span class="dim-val" id="dim-val-contrast_boost">0.25</span>
+      </div>
+      <div class="dim-slider-row">
+        <span class="dim-label" title="complementary_shadow [0.0–0.3]">comp_shadow</span>
+        <input type="range" id="dim-complementary_shadow" min="0" max="0.3" step="0.01" value="0.12">
+        <span class="dim-val" id="dim-val-complementary_shadow">0.12</span>
+      </div>
+      <div class="dim-slider-row">
+        <span class="dim-label" title="van_gogh_bias [0.0–1.0]">van_gogh_bias</span>
+        <input type="range" id="dim-van_gogh_bias" min="0" max="1" step="0.01" value="0">
+        <span class="dim-val" id="dim-val-van_gogh_bias">0.00</span>
+      </div>
+      <div class="dim-slider-row">
+        <span class="dim-label" title="tenebrism_bias [0.0–1.0]">tenebrism_bias</span>
+        <input type="range" id="dim-tenebrism_bias" min="0" max="1" step="0.01" value="0">
+        <span class="dim-val" id="dim-val-tenebrism_bias">0.00</span>
+      </div>
+      <div class="dim-slider-row">
+        <span class="dim-label" title="pointillism_bias [0.0–1.0]">pointillism_bias</span>
+        <input type="range" id="dim-pointillism_bias" min="0" max="1" step="0.01" value="0">
+        <span class="dim-val" id="dim-val-pointillism_bias">0.00</span>
+      </div>
+      <div class="btn-row" style="margin-top:10px;">
+        <button class="btn primary" id="dim-preview-btn" onclick="dimPreview()">Preview</button>
+        <button class="btn" onclick="dimReset()">Reset</button>
+      </div>
+      <div class="dim-status" id="dim-status"></div>
+    </section>
+
+
+  </div>
+
+  <div class="col-history">
+    <!-- Iteration History -->
+    <section class="card" style="flex:1;">
+      <div class="card-head">
+        <span class="h">Iteration History</span>
+        <span class="snap-count" id="snap-count"></span>
+        <span class="spacer"></span>
+        <label class="speed-wrap">
+          Speed
+          <input type="range" id="speed-slider" min="0.25" max="4" step="0.25" value="1">
+          <span class="val" id="speed-label">1x</span>
+        </label>
+        <button class="btn" id="pause-btn" onclick="togglePause()" style="display:none">Pause</button>
+        <button class="btn" id="step-btn" onclick="stepFrame()" style="display:none" title="Advance one animation frame">Step</button>
+        <button class="btn" id="compare-btn" onclick="toggleCompareMode()" title="Click two iteration tiles to compare">Compare</button>
+        <button class="btn" id="replay-btn" onclick="replayLive()" title="Replay the current canvas from iteration 1">Replay all</button>
+        <button class="btn" id="live-btn" onclick="returnToLive()" style="display:none">Return to live</button>
+      </div>
+      <div class="strip" id="history-strip">
+        <div class="empty">No iterations yet — click "Paint this image" to start.</div>
+      </div>
+      <div class="reason-row" id="reason-row"></div>
+    </section>
+  </div>
+
+</div>
+
+
+<!-- === Compare modal =================================================== -->
+<div class="compare-modal" id="compare-modal">
+  <span class="close" onclick="closeCompareModal()">&times;</span>
+  <div class="pair">
+    <div class="pane"><img id="cmp-a" alt="A"><div class="label" id="cmp-a-label">A</div></div>
+    <div class="pane"><img id="cmp-b" alt="B"><div class="label" id="cmp-b-label">B</div></div>
+  </div>
+  <div class="hint">Esc to close · click tiles to replace A/B</div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let polling = true;
+let viewingIteration = null; // null = current, number = viewing snapshot
+let currentHistory = [];
+
+ctx.fillStyle = 'white';
+ctx.fillRect(0, 0, 512, 512);
+
+// === Polling ===
+async function poll() {
+  if (!polling) return;
+  try {
+    const res = await fetch('/api/state');
+    const data = await res.json();
+
+    // Update canvas (only if not viewing/replaying a snapshot)
+    if (viewingIteration === null && !isReplaying && data.canvas_png) {
+      const img = new Image();
+      img.onload = () => { ctx.clearRect(0,0,512,512); ctx.drawImage(img, 0, 0); };
+      img.src = 'data:image/png;base64,' + data.canvas_png;
+    }
+
+    // Update stats
+    document.getElementById('iter').textContent = data.iteration;
+    document.getElementById('strokes').textContent = data.strokes_applied;
+    document.getElementById('snap-count').textContent = `${data.snapshot_count} saved`;
+
+    if (data.score) {
+      const ssimEl = document.getElementById('ssim');
+      const mseEl = document.getElementById('mse');
+      const compEl = document.getElementById('composite');
+      ssimEl.textContent = data.score.ssim.toFixed(4);
+      mseEl.textContent = data.score.mse.toFixed(6);
+      document.getElementById('composite').textContent = data.score.composite.toFixed(4);
+      ssimEl.className = 'val' + (data.score.ssim > 0.7 ? ' good' : (data.score.ssim < 0.5 ? ' bad' : ''));
+    }
+
+    if (data.target_name) {
+      document.getElementById('target-label').textContent = data.target_name;
+      document.getElementById('target-name').textContent = data.target_name;
+      const topLabel = document.getElementById('target-label-top');
+      if (topLabel) topLabel.textContent = 'Target · ' + data.target_name;
+    }
+
+    // Update history strip (tiles)
+    if (data.history && data.history.length > 0) {
+      currentHistory = data.history;
+      renderHistoryStrip(data.history);
+    } else {
+      currentHistory = [];
+      const strip = document.getElementById('history-strip');
+      strip.innerHTML = '<div class="empty">No iterations yet — click "Paint this image" to start.</div>';
+    }
+  } catch(e) {}
+}
+
+function renderHistoryStrip(history) {
+  const strip = document.getElementById('history-strip');
+  // Only rebuild if the set of iterations actually changed (avoids flicker
+  // on every 500ms poll). Active class is toggled every render regardless.
+  const sig = history.map(h => h.iteration).join(',');
+  if (strip.__sig === sig) {
+    strip.querySelectorAll('.tile').forEach(t => {
+      t.classList.toggle('active', parseInt(t.dataset.iter) === viewingIteration);
+    });
+    return;
+  }
+  strip.__sig = sig;
+  strip.innerHTML = '';
+  history.forEach(h => {
+    const tile = document.createElement('div');
+    tile.className = 'tile' + (h.iteration === viewingIteration ? ' active' : '');
+    tile.dataset.iter = h.iteration;
+    const ssim = h.score ? h.score.ssim : null;
+    const ssimCls = ssim == null ? '' : (ssim > 0.7 ? ' good' : (ssim < 0.5 ? ' bad' : ''));
+    const phaseLabel = (h.reasoning || '').replace(/^Phase\s+[0-9a-z]+\s*·\s*/, '');
+    tile.innerHTML = `
+      <img id="thumb-${h.iteration}" alt="iter ${h.iteration}">
+      <div class="badge">#${h.iteration}</div>
+      ${phaseLabel ? `<div class="phase">${phaseLabel}</div>` : ''}
+      <div class="meta">
+        <span>${h.strokes} str</span>
+        <span class="n${ssimCls}">${ssim != null ? ssim.toFixed(3) : '—'}</span>
+      </div>
+    `;
+    tile.title = h.reasoning || `Iteration ${h.iteration}`;
+    tile.onclick = () => {
+      if (compareMode) pickForCompare(h.iteration);
+      else playIteration(h.iteration);
+    };
+    strip.appendChild(tile);
+    // Load thumbnail lazily
+    fetch('/api/iteration/' + h.iteration).then(r => r.json()).then(d => {
+      const im = document.getElementById('thumb-' + h.iteration);
+      if (im && d.canvas_png) im.src = 'data:image/png;base64,' + d.canvas_png;
+    }).catch(()=>{});
+  });
+  // Auto-scroll to the rightmost (newest) tile
+  strip.scrollLeft = strip.scrollWidth;
+}
+
+// === File upload ===
+async function uploadFile(input) {
+  if (!input.files || !input.files[0]) return;
+  const file = input.files[0];
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const fit = document.getElementById('fit-letterbox').checked ? 'letterbox' : 'crop';
+  const res = await fetch('/api/target?fit=' + fit, {method: 'POST', body: formData});
+  const data = await res.json();
+
+  if (data.ok) {
+    document.getElementById('target-name').textContent = data.filename;
+    pollTarget();
+  }
+}
+
+async function pollTarget() {
+  try {
+    const res = await fetch('/api/target');
+    if (res.ok) {
+      const data = await res.json();
+      const img = document.getElementById('target');
+      img.src = 'data:image/png;base64,' + data.target_png;
+      img.style.display = 'block';
+      document.getElementById('no-target').style.display = 'none';
+      document.getElementById('target-label').textContent = data.name || 'loaded';
+    }
+  } catch(e) {}
+}
+
+async function loadTestTarget() {
+  try {
+    const res = await fetch('https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=512&h=512&fit=crop');
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append('file', blob, 'test_landscape.jpg');
+    await fetch('/api/target', {method: 'POST', body: formData});
+    pollTarget();
+  } catch(e) { alert('Failed to load test target: ' + e.message); }
+}
+
+async function loadGalleryTarget(url, name) {
+  try {
+    const res = await fetch(url);
+    const blob = await res.blob();
+    const formData = new FormData();
+    formData.append('file', blob, name);
+    await fetch('/api/target', {method: 'POST', body: formData});
+    pollTarget();
+  } catch(e) { alert('Failed: ' + e.message); }
+}
+
+// Gallery of test images
+const testImages = [
+  { name: 'Landscape', url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=600&h=600&fit=crop' },
+  { name: 'Sunset', url: 'https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?w=600&h=600&fit=crop' },
+  { name: 'Forest', url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=600&h=600&fit=crop' },
+  { name: 'City', url: 'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=600&h=600&fit=crop' },
+  { name: 'Portrait', url: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=600&h=600&fit=crop' },
+  { name: 'Ocean', url: 'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=600&h=600&fit=crop' },
+  { name: 'Night Sky', url: 'https://images.unsplash.com/photo-1519681393784-d120267933ba?w=600&h=600&fit=crop' },
+  { name: 'Snow', url: 'https://images.unsplash.com/photo-1491002052546-bf38f186af56?w=600&h=600&fit=crop' },
+  { name: 'Flower', url: 'https://images.unsplash.com/photo-1455659817273-f96807779a8a?w=600&h=600&fit=crop' },
+  { name: 'Mountain', url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=600&h=600&fit=crop' },
+  { name: 'Abstract', url: 'https://images.unsplash.com/photo-1541701494587-cb58502866ab?w=600&h=600&fit=crop' },
+  { name: 'Desert', url: 'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=600&h=600&fit=crop' },
+];
+
+function buildGallery() {
+  const gallery = document.getElementById('gallery');
+  testImages.forEach(img => {
+    const thumb = document.createElement('div');
+    thumb.innerHTML = `<img src="${img.url}" title="${img.name}">`;
+    thumb.onclick = () => loadGalleryTarget(img.url, img.name + '.jpg');
+    gallery.appendChild(thumb);
+  });
+}
+
+buildGallery();
+
+// === Animated iteration replay ===
+// Clicking an iteration tile replays the strokes of THAT iteration animated on
+// the main canvas, starting from the previous iteration's snapshot so you can
+// watch each brush stroke come to life.
+let isReplaying = false;
+let replayToken = 0;     // incremented to cancel in-flight replays
+let replaySpeed = 1.0;   // 0.25 .. 4.0
+let isPaused = false;
+let stepOnce = false;    // set true to advance one frame while paused
+
+function updateLiveBtn() {
+  const replaying = isReplaying;
+  document.getElementById('live-btn').style.display =
+    (viewingIteration !== null || replaying) ? '' : 'none';
+  document.getElementById('pause-btn').style.display = replaying ? '' : 'none';
+  document.getElementById('step-btn').style.display = replaying ? '' : 'none';
+  document.getElementById('pause-btn').textContent = isPaused ? 'Resume' : 'Pause';
+}
+
+function togglePause() {
+  isPaused = !isPaused;
+  updateLiveBtn();
+}
+
+function stepFrame() {
+  if (isPaused) stepOnce = true;
+}
+
+// Speed slider wiring
+(function() {
+  const slider = document.getElementById('speed-slider');
+  const label = document.getElementById('speed-label');
+  slider.addEventListener('input', () => {
+    replaySpeed = parseFloat(slider.value);
+    label.textContent = replaySpeed + 'x';
+  });
+})();
+
+// waitFrame: yield a requestAnimationFrame BUT honor pause/step
+function waitFrame() {
+  return new Promise(resolve => {
+    function tick() {
+      if (!isPaused || stepOnce) {
+        stepOnce = false;
+        requestAnimationFrame(resolve);
+      } else {
+        setTimeout(tick, 60);
+      }
+    }
+    tick();
+  });
+}
+
+async function loadImageToCanvas(b64) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      ctx.clearRect(0, 0, 512, 512);
+      ctx.drawImage(img, 0, 0);
+      resolve();
+    };
+    img.src = 'data:image/png;base64,' + b64;
+  });
+}
+
+async function playIteration(iterNum) {
+  const token = ++replayToken;
+  isReplaying = true;
+  viewingIteration = iterNum;
+  updateLiveBtn();
+  document.querySelectorAll('.tile').forEach(t => {
+    t.classList.toggle('active', parseInt(t.dataset.iter) === iterNum);
+  });
+  const reason = (currentHistory.find(h => h.iteration === iterNum) || {}).reasoning || '';
+  const entry = currentHistory.find(h => h.iteration === iterNum);
+  const ssim = entry && entry.score ? entry.score.ssim.toFixed(4) : '—';
+  document.getElementById('reason-row').textContent = `▶ Replaying iteration ${iterNum} — ${reason} · ssim=${ssim}`;
+  showPhaseOverlay(reason || `Iteration ${iterNum}`);
+
+  try {
+    const res = await fetch('/api/iteration/' + iterNum + '/strokes');
+    if (!res.ok) { isReplaying = false; updateLiveBtn(); return; }
+    const data = await res.json();
+    if (token !== replayToken) return;
+
+    // Reset canvas to previous iteration's snapshot (or linen blank)
+    if (data.prev_canvas_png) {
+      await loadImageToCanvas(data.prev_canvas_png);
+    } else {
+      resetCanvasBlank();
+    }
+    if (token !== replayToken) return;
+
+    const strokes = data.strokes || [];
+    if (strokes.length === 0) { isReplaying = false; updateLiveBtn(); return; }
+
+    // Target total duration scales inversely with replaySpeed. At 1x → ~4s, 0.25x → ~16s.
+    const frameCap = Math.round(240 / replaySpeed);
+    const targetFrames = Math.max(12, Math.min(frameCap, Math.ceil(strokes.length / replaySpeed)));
+    const perFrame = Math.max(1, Math.ceil(strokes.length / targetFrames));
+
+    let i = 0;
+    while (i < strokes.length) {
+      if (token !== replayToken) break;
+      const end = Math.min(strokes.length, i + perFrame);
+      for (; i < end; i++) drawStroke(ctx, strokes[i]);
+      await waitFrame();
+    }
+  } catch (e) { /* swallow */ }
+  if (token === replayToken) {
+    isReplaying = false;
+    updateLiveBtn();
+    document.getElementById('reason-row').textContent =
+      `Iteration ${iterNum} · ${reason} · ssim=${ssim} — click another tile or "Return to live".`;
+    showPhaseOverlay('');
+  }
+}
+
+async function replayLive() {
+  if (currentHistory.length === 0) return;
+  const token = ++replayToken;
+  isReplaying = true;
+  viewingIteration = null;
+  updateLiveBtn();
+  resetCanvasBlank();
+  for (const h of currentHistory) {
+    if (token !== replayToken) return;
+    document.getElementById('reason-row').textContent =
+      `▶ Replaying all · iteration ${h.iteration}/${currentHistory.length}`;
+    showPhaseOverlay(h.reasoning || `Iteration ${h.iteration}`);
+    document.querySelectorAll('.tile').forEach(t => {
+      t.classList.toggle('active', parseInt(t.dataset.iter) === h.iteration);
+    });
+    try {
+      const res = await fetch('/api/iteration/' + h.iteration + '/strokes');
+      if (!res.ok) continue;
+      const data = await res.json();
+      const strokes = data.strokes || [];
+      if (!strokes.length) continue;
+      const frameCap = Math.round(120 / replaySpeed);
+      const targetFrames = Math.max(12, Math.min(frameCap, Math.ceil(strokes.length / replaySpeed)));
+      const perFrame = Math.max(1, Math.ceil(strokes.length / targetFrames));
+      let i = 0;
+      while (i < strokes.length) {
+        if (token !== replayToken) break;
+        const end = Math.min(strokes.length, i + perFrame);
+        for (; i < end; i++) drawStroke(ctx, strokes[i]);
+        await waitFrame();
+      }
+    } catch (e) {}
+  }
+  if (token === replayToken) {
+    isReplaying = false;
+    updateLiveBtn();
+    document.getElementById('reason-row').textContent = 'Replay complete.';
+    showPhaseOverlay('');
+  }
+}
+
+function returnToLive() {
+  replayToken++;  // cancels any in-flight replay
+  isReplaying = false;
+  isPaused = false;
+  viewingIteration = null;
+  updateLiveBtn();
+  document.getElementById('reason-row').textContent = '';
+  showPhaseOverlay('');
+  poll();
+}
+
+function resetCanvasBlank() {
+  // Mirror canvas/index.html's clear() — warm off-white + subtle linen grain.
+  ctx.save();
+  ctx.fillStyle = '#fbf7ee';
+  ctx.fillRect(0, 0, 512, 512);
+  let s = 42;
+  const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+  for (let i = 0; i < 3500; i++) {
+    const x = Math.floor(rnd() * 512), y = Math.floor(rnd() * 512);
+    const gray = 220 + Math.floor(rnd() * 30);
+    const alpha = 0.04 + rnd() * 0.08;
+    ctx.fillStyle = `rgba(${gray - 8}, ${gray - 10}, ${gray - 16}, ${alpha})`;
+    ctx.fillRect(x, y, 1 + Math.floor(rnd() * 2), 1 + Math.floor(rnd() * 2));
+  }
+  ctx.globalAlpha = 0.025;
+  ctx.strokeStyle = '#8a7860';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i < 60; i++) {
+    const y = Math.floor(rnd() * 512);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y + (rnd() - 0.5) * 2); ctx.stroke();
+  }
+  for (let i = 0; i < 60; i++) {
+    const x = Math.floor(rnd() * 512);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + (rnd() - 0.5) * 2, 512); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// Port of canvas/index.html drawStroke — must stay in sync. Used for replay
+// animation so each stroke renders on the main canvas with the same look as
+// when it was applied live.
+function drawStroke(ctx, spec) {
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = spec.color || '#000';
+  ctx.fillStyle = spec.color || '#000';
+  ctx.lineWidth = spec.width || 2;
+  ctx.globalAlpha = spec.alpha == null ? 1 : spec.alpha;
+  switch (spec.type) {
+    case 'line': {
+      const [p0, p1] = spec.points;
+      ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke(); break;
+    }
+    case 'polyline': {
+      const pts = spec.points;
+      if (pts.length < 2) break;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.stroke(); break;
+    }
+    case 'bezier': {
+      const [p0, c1, c2, p1] = spec.points;
+      ctx.beginPath(); ctx.moveTo(p0[0], p0[1]);
+      ctx.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], p1[0], p1[1]);
+      ctx.stroke(); break;
+    }
+    case 'fill_rect': ctx.fillRect(spec.x, spec.y, spec.w, spec.h); break;
+    case 'fill_circle':
+      ctx.beginPath(); ctx.arc(spec.x, spec.y, spec.r, 0, Math.PI * 2); ctx.fill(); break;
+    case 'fill_poly': {
+      const pts = spec.points;
+      if (pts.length < 3) break;
+      ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath(); ctx.fill(); break;
+    }
+    case 'brush': {
+      const pts = spec.points;
+      if (pts.length < 2) break;
+      const w = spec.width || 20;
+      const base_alpha = spec.alpha == null ? 0.85 : spec.alpha;
+      const texture = spec.texture || 'bristle';
+      const color = spec.color || '#000000';
+      const r = parseInt(color.slice(1, 3), 16);
+      const g = parseInt(color.slice(3, 5), 16);
+      const b = parseInt(color.slice(5, 7), 16);
+      let seed = Math.floor((pts[0][0] * 73 + pts[0][1] * 37 + w * 13 + r * 7 + g * 11 + b * 17) % 2147483646);
+      if (seed <= 0) seed = 1;
+      const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      const normals = [];
+      for (let i = 0; i < pts.length; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p2 = pts[Math.min(pts.length - 1, i + 1)];
+        const dx = p2[0] - p0[0], dy = p2[1] - p0[1];
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        normals.push([-dy / len, dx / len]);
+      }
+      if (texture === 'smooth') {
+        ctx.globalAlpha = base_alpha; ctx.fillStyle = color;
+        const left = [], right = [];
+        for (let i = 0; i < pts.length; i++) {
+          const [nx, ny] = normals[i]; const hw = w / 2;
+          left.push([pts[i][0] + nx * hw, pts[i][1] + ny * hw]);
+          right.push([pts[i][0] - nx * hw, pts[i][1] - ny * hw]);
+        }
+        ctx.beginPath(); ctx.moveTo(left[0][0], left[0][1]);
+        for (let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+        for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+        ctx.closePath(); ctx.fill();
+        break;
+      }
+      const SUB = 8;
+      const dense = [], dense_normals = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i], p2 = pts[i + 1], n1 = normals[i], n2 = normals[i + 1];
+        const steps = (i === pts.length - 2) ? SUB + 1 : SUB;
+        for (let k = 0; k < steps; k++) {
+          const t = k / SUB;
+          dense.push([p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]);
+          dense_normals.push([n1[0] + (n2[0] - n1[0]) * t, n1[1] + (n2[1] - n1[1]) * t]);
+        }
+      }
+      // Wash
+      ctx.globalAlpha = base_alpha * 0.18; ctx.fillStyle = color;
+      const wl = [], wr = [];
+      for (let i = 0; i < dense.length; i++) {
+        const [nx, ny] = dense_normals[i]; const hw = w * 0.45;
+        wl.push([dense[i][0] + nx * hw, dense[i][1] + ny * hw]);
+        wr.push([dense[i][0] - nx * hw, dense[i][1] - ny * hw]);
+      }
+      ctx.beginPath(); ctx.moveTo(wl[0][0], wl[0][1]);
+      for (let i = 1; i < wl.length; i++) ctx.lineTo(wl[i][0], wl[i][1]);
+      for (let i = wr.length - 1; i >= 0; i--) ctx.lineTo(wr[i][0], wr[i][1]);
+      ctx.closePath(); ctx.fill();
+      // Bristles
+      const n_bristles = Math.max(12, Math.min(32, Math.floor(w * 0.9)));
+      for (let bi = 0; bi < n_bristles; bi++) {
+        const t = bi / (n_bristles - 1);
+        const offset = (t - 0.5) * w * (0.95 + rand() * 0.1) + (rand() - 0.5) * 2.5;
+        const edge_dist = Math.abs(t - 0.5) * 2;
+        const hue_shift = (rand() - 0.5) * 28;
+        const val_shift = (rand() - 0.5) * 30 - edge_dist * 8;
+        const br = Math.max(0, Math.min(255, r + hue_shift + val_shift));
+        const bg = Math.max(0, Math.min(255, g + hue_shift * 0.7 + val_shift * 0.95));
+        const bb = Math.max(0, Math.min(255, b + hue_shift * 1.3 + val_shift * 0.85));
+        const ba = base_alpha * (0.45 + rand() * 0.55);
+        const bw = 0.7 + rand() * 1.4;
+        const st = rand() * 0.05, et = rand() * 0.08;
+        ctx.globalAlpha = ba;
+        ctx.strokeStyle = `rgb(${br|0}, ${bg|0}, ${bb|0})`;
+        ctx.lineWidth = bw;
+        ctx.beginPath(); let started = false;
+        for (let j = 0; j < dense.length; j++) {
+          const tau = dense.length === 1 ? 0 : j / (dense.length - 1);
+          if (tau < st || tau > 1 - et) continue;
+          const [nx, ny] = dense_normals[j];
+          const x = dense[j][0] + nx * offset + (rand() - 0.5) * 2.5;
+          const y = dense[j][1] + ny * offset + (rand() - 0.5) * 2.5;
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      // Accent darks
+      const n_accents = 3 + Math.floor(rand() * 3);
+      for (let ai = 0; ai < n_accents; ai++) {
+        const t = rand();
+        const offset = (t - 0.5) * w * 0.85;
+        const dr = Math.max(0, r - 25 - rand() * 20);
+        const dg = Math.max(0, g - 25 - rand() * 20);
+        const db = Math.max(0, b - 25 - rand() * 20);
+        ctx.globalAlpha = base_alpha * 0.4;
+        ctx.strokeStyle = `rgb(${dr|0}, ${dg|0}, ${db|0})`;
+        ctx.lineWidth = 0.6 + rand() * 0.7;
+        ctx.beginPath(); let started = false;
+        const st = 0.05 + rand() * 0.3, et = 0.05 + rand() * 0.3;
+        for (let j = 0; j < dense.length; j++) {
+          const tau = dense.length === 1 ? 0 : j / (dense.length - 1);
+          if (tau < st || tau > 1 - et) continue;
+          const [nx, ny] = dense_normals[j];
+          const x = dense[j][0] + nx * offset + (rand() - 0.5) * 2;
+          const y = dense[j][1] + ny * offset + (rand() - 0.5) * 2;
+          if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'dab': {
+      const cx = spec.x, cy = spec.y;
+      const dw = spec.w || 20, dh = spec.h || dw * 0.6;
+      const angle = spec.angle || 0;
+      ctx.globalAlpha = spec.alpha == null ? 0.9 : spec.alpha;
+      ctx.save(); ctx.translate(cx, cy); ctx.rotate(angle);
+      ctx.beginPath(); ctx.ellipse(0, 0, dw / 2, dh / 2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore(); break;
+    }
+    case 'fog': {
+      const x = spec.x || 0, y = spec.y || 0;
+      const w = spec.w || 512, h = spec.h || 512;
+      const a = spec.alpha == null ? 0.3 : spec.alpha;
+      const color = spec.color || '#cccccc';
+      const direction = spec.direction || 'horizontal';
+      const fade = spec.fade == null ? 0.4 : spec.fade;
+      let grad;
+      if (direction === 'vertical') {
+        grad = ctx.createLinearGradient(0, y, 0, y + h);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(fade, color);
+        grad.addColorStop(1 - fade, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      } else if (direction === 'radial') {
+        const cx = x + w / 2, cy = y + h / 2, rr = Math.max(w, h) / 2;
+        grad = ctx.createRadialGradient(cx, cy, rr * (1 - fade), cx, cy, rr);
+        grad.addColorStop(0, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      } else {
+        grad = ctx.createLinearGradient(x, 0, x + w, 0);
+        grad.addColorStop(0, 'rgba(0,0,0,0)'); grad.addColorStop(fade, color);
+        grad.addColorStop(1 - fade, color); grad.addColorStop(1, 'rgba(0,0,0,0)');
+      }
+      ctx.globalAlpha = a; ctx.fillStyle = grad; ctx.fillRect(x, y, w, h); break;
+    }
+    case 'glow': {
+      const cx = spec.x, cy = spec.y;
+      const rr = spec.r || 30;
+      const a = spec.alpha == null ? 1.0 : spec.alpha;
+      let stops = spec.stops;
+      if (!stops) {
+        const base = spec.color || '#ffd870';
+        stops = [[0.00, '#ffffff'], [0.20, '#fff2b0'], [0.50, base], [1.00, 'rgba(0,0,0,0)']];
+      }
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, rr);
+      for (const [t, c] of stops) grad.addColorStop(Math.max(0, Math.min(1, t)), c);
+      ctx.globalAlpha = a; ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2); ctx.fill(); break;
+    }
+    case 'splat': {
+      const cx = spec.x, cy = spec.y;
+      const rr = spec.r || 15, count = spec.count || 5;
+      ctx.globalAlpha = spec.alpha == null ? 0.7 : spec.alpha;
+      let seed = (cx * 73 + cy * 37 + rr * 13) % 1000;
+      const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+      for (let i = 0; i < count; i++) {
+        const sx = cx + (rand() - 0.5) * rr * 1.5;
+        const sy = cy + (rand() - 0.5) * rr * 1.5;
+        const sr = rr * (0.3 + rand() * 0.7);
+        ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+      }
+      break;
+    }
+  }
+  ctx.restore();
+}
+
+// === Controls ===
+async function clearCanvas() {
+  replayToken++;
+  isReplaying = false;
+  viewingIteration = null;
+  updateLiveBtn();
+  await fetch('/api/clear', {method: 'POST'});
+  poll();
+}
+
+function downloadCanvas() {
+  // Extract current canvas as PNG data URL and trigger browser download
+  const dataUrl = canvas.toDataURL('image/png');
+  const a = document.createElement('a');
+  const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const name = (document.getElementById('target-label').textContent || 'painting')
+                  .replace(/[^a-z0-9._-]+/gi, '_');
+  a.href = dataUrl;
+  a.download = `painting_${name}_${ts}.png`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+// === Compare A vs B mode ===
+let compareMode = false;
+let compareA = null;
+let compareB = null;
+
+function toggleCompareMode() {
+  compareMode = !compareMode;
+  const btn = document.getElementById('compare-btn');
+  btn.classList.toggle('primary', compareMode);
+  if (!compareMode) {
+    compareA = null; compareB = null;
+    document.querySelectorAll('.tile').forEach(t => t.classList.remove('slot-a', 'slot-b'));
+    document.getElementById('reason-row').textContent = '';
+  } else {
+    document.getElementById('reason-row').textContent = 'Compare ON · click two iteration tiles to pick A and B';
+  }
+}
+
+async function pickForCompare(iterNum) {
+  const res = await fetch('/api/iteration/' + iterNum);
+  if (!res.ok) return;
+  const d = await res.json();
+  const url = 'data:image/png;base64,' + d.canvas_png;
+  const entry = currentHistory.find(h => h.iteration === iterNum) || {};
+  const labelText = `#${iterNum} · ${entry.reasoning || ''} · ssim=${entry.score ? entry.score.ssim.toFixed(3) : '—'}`;
+
+  document.querySelectorAll('.tile').forEach(t => {
+    if (parseInt(t.dataset.iter) === iterNum) t.classList.remove('slot-a', 'slot-b');
+  });
+  if (compareA === null || (compareA !== null && compareB !== null)) {
+    compareA = iterNum;
+    compareB = null;
+    document.getElementById('cmp-a').src = url;
+    document.getElementById('cmp-a-label').textContent = 'A · ' + labelText;
+    document.getElementById('cmp-b').src = '';
+    document.getElementById('cmp-b-label').textContent = 'B · ...';
+    document.querySelectorAll('.tile').forEach(t => t.classList.remove('slot-a', 'slot-b'));
+    const aTile = document.querySelector(`.tile[data-iter="${iterNum}"]`);
+    if (aTile) aTile.classList.add('slot-a');
+    document.getElementById('reason-row').textContent = `A = iter ${iterNum}. Click another tile for B.`;
+  } else {
+    compareB = iterNum;
+    document.getElementById('cmp-b').src = url;
+    document.getElementById('cmp-b-label').textContent = 'B · ' + labelText;
+    const bTile = document.querySelector(`.tile[data-iter="${iterNum}"]`);
+    if (bTile) bTile.classList.add('slot-b');
+    document.getElementById('compare-modal').classList.add('active');
+    document.getElementById('reason-row').textContent = `Comparing A=iter ${compareA} vs B=iter ${compareB}`;
+  }
+}
+
+function closeCompareModal() {
+  document.getElementById('compare-modal').classList.remove('active');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('compare-modal').classList.contains('active')) {
+    closeCompareModal();
+  }
+});
+
+function showPhaseOverlay(text) {
+  const el = document.getElementById('phase-overlay');
+  if (!el) return;
+  if (text) {
+    el.textContent = text;
+    el.classList.add('active');
+  } else {
+    el.classList.remove('active');
+  }
+}
+
+function updateMorphPaintEnabled() {
+  const s = document.getElementById('morph-start').value;
+  const e = document.getElementById('morph-end').value;
+  const btn = document.getElementById('morph-paint-btn');
+  btn.disabled = !(s && e);
+}
+
+async function suggestMorph() {
+  const suggestBtn = document.getElementById('morph-suggest-btn');
+  const rationaleDiv = document.getElementById('morph-rationale');
+  const originalLabel = suggestBtn.textContent;
+  suggestBtn.textContent = 'Analysing…';
+  suggestBtn.disabled = true;
+  try {
+    const res = await fetch('/api/suggest_morph', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      alert(err.error || `Suggest failed: HTTP ${res.status}`);
+      return;
+    }
+    const data = await res.json();
+    const sched = data.schedule;
+    if (!sched || !sched.start || !sched.end) {
+      alert('Suggest returned an unexpected shape — try again.');
+      return;
+    }
+    document.getElementById('morph-start').value = sched.start;
+    document.getElementById('morph-end').value = sched.end;
+    rationaleDiv.textContent = sched.rationale || '(no rationale provided)';
+    rationaleDiv.dataset.rationale = sched.rationale || '';
+    rationaleDiv.hidden = false;
+    updateMorphPaintEnabled();
+  } catch (err) {
+    alert('Suggest failed: ' + err.message);
+  } finally {
+    suggestBtn.textContent = originalLabel;
+    suggestBtn.disabled = false;
+  }
+}
+
+function updateDuetEnabled() {
+  const a = document.getElementById('duet-persona-a');
+  const b = document.getElementById('duet-persona-b');
+  const btn = document.getElementById('duet-start-btn');
+  const aVal = a.value;
+  const bVal = b.value;
+  btn.disabled = !(aVal && bVal && aVal !== bVal && !a.disabled && !b.disabled);
+}
+
+function _prettyPersonaLabel(name) {
+  const trimmed = name.endsWith('_voice') ? name.slice(0, -6) : name;
+  if (!trimmed) return name;
+  return trimmed.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+async function loadPersonaList() {
+  const selA = document.getElementById('duet-persona-a');
+  const selB = document.getElementById('duet-persona-b');
+  try {
+    const res = await fetch('/api/list_personas');
+    if (!res.ok) {
+      selA.innerHTML = '<option disabled selected value="">Personas unavailable</option>';
+      selB.innerHTML = '<option disabled selected value="">Personas unavailable</option>';
+      console.warn('list_personas failed:', res.status);
+      return;
+    }
+    const data = await res.json();
+    const personas = (data && data.personas) || [];
+    if (!personas.length) {
+      selA.innerHTML = '<option disabled selected value="">No personas found</option>';
+      selB.innerHTML = '<option disabled selected value="">No personas found</option>';
+      return;
+    }
+    const buildOptions = () => {
+      const frag = document.createDocumentFragment();
+      const placeholder = document.createElement('option');
+      placeholder.disabled = true;
+      placeholder.selected = true;
+      placeholder.value = '';
+      placeholder.textContent = 'Pick a persona';
+      frag.appendChild(placeholder);
+      for (const p of personas) {
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.dataset.kind = p.kind || 'builtin';
+        opt.textContent = _prettyPersonaLabel(p.name);
+        frag.appendChild(opt);
+      }
+      return frag;
+    };
+    selA.replaceChildren(buildOptions());
+    selB.replaceChildren(buildOptions());
+    selA.disabled = false;
+    selB.disabled = false;
+    updateDuetEnabled();
+  } catch (err) {
+    selA.innerHTML = '<option disabled selected value="">Personas unavailable</option>';
+    selB.innerHTML = '<option disabled selected value="">Personas unavailable</option>';
+    console.warn('list_personas error:', err);
+  }
+}
+
+async function startDuet() {
+  const personaA = document.getElementById('duet-persona-a').value;
+  const personaB = document.getElementById('duet-persona-b').value;
+  const maxTurns = parseInt(document.getElementById('duet-max-turns').value, 10);
+  if (!personaA || !personaB || personaA === personaB) return;
+  const card = document.getElementById('duet-card');
+  const btn = document.getElementById('duet-start-btn');
+  if (card.classList.contains('busy')) return;
+
+  // Cancel any in-flight replay so live strokes appear (same as startPainting).
+  replayToken++;
+  isReplaying = false;
+  viewingIteration = null;
+  updateLiveBtn();
+
+  card.classList.add('busy');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Duet running…';
+  const unlock = () => {
+    card.classList.remove('busy');
+    btn.textContent = originalLabel;
+  };
+
+  try {
+    const res = await fetch('/api/paint_duet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        persona_a: personaA,
+        persona_b: personaB,
+        max_turns: maxTurns,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || `Duet failed (HTTP ${res.status})`);
+      unlock();
+      return;
+    }
+    const checkDone = setInterval(async () => {
+      try {
+        const s = await fetch('/api/state');
+        const d = await s.json();
+        if (!d.busy) {
+          clearInterval(checkDone);
+          unlock();
+        }
+      } catch (err) {
+        // Network blip — keep polling.
+      }
+    }, 2000);
+  } catch (err) {
+    alert('Duet failed: ' + err.message);
+    unlock();
+  }
+}
+
+async function startMorphPaint() {
+  const start = document.getElementById('morph-start').value;
+  const end = document.getElementById('morph-end').value;
+  if (!start || !end) return;
+  const rationale = document.getElementById('morph-rationale').dataset.rationale || '';
+  const card = document.getElementById('morph-card');
+  if (card.classList.contains('busy')) return;
+
+  // Cancel any in-flight replay so live strokes appear (same as startPainting).
+  replayToken++;
+  isReplaying = false;
+  viewingIteration = null;
+  updateLiveBtn();
+
+  card.classList.add('busy');
+  const unlock = () => card.classList.remove('busy');
+
+  try {
+    const res = await fetch('/api/paint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        style_schedule: { start, end, rationale },
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || `Paint failed (HTTP ${res.status})`);
+      unlock();
+      return;
+    }
+    const checkDone = setInterval(async () => {
+      const s = await fetch('/api/state');
+      const d = await s.json();
+      if (!d.busy) {
+        clearInterval(checkDone);
+        unlock();
+      }
+    }, 2000);
+  } catch (err) {
+    alert('Paint failed: ' + err.message);
+    unlock();
+  }
+}
+
+async function startPresetPaint(btn) {
+  const personality = btn.dataset.personality || '';
+  const bar = document.getElementById('preset-bar');
+  if (bar.classList.contains('busy')) return;  // belt-and-braces
+
+  // Cancel any in-flight replay (same as startPainting) so live strokes appear.
+  replayToken++;
+  isReplaying = false;
+  viewingIteration = null;
+  updateLiveBtn();
+
+  // Visual state: mark this tile active, lock the bar.
+  document.querySelectorAll('.preset-tile').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  bar.classList.add('busy');
+
+  const unlock = () => {
+    bar.classList.remove('busy');
+    btn.classList.remove('active');
+  };
+
+  try {
+    const body = personality ? { style_personality: personality } : {};
+    const res = await fetch('/api/paint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      alert(data.error || `Paint failed (HTTP ${res.status})`);
+      unlock();
+      return;
+    }
+    const checkDone = setInterval(async () => {
+      const s = await fetch('/api/state');
+      const d = await s.json();
+      if (!d.busy) {
+        clearInterval(checkDone);
+        unlock();
+      }
+    }, 2000);
+  } catch (e) {
+    alert('Paint failed: ' + e.message);
+    unlock();
+  }
+}
+
+async function startPainting() {
+  // Cancel any in-flight replay so the user sees live strokes appear
+  replayToken++;
+  isReplaying = false;
+  viewingIteration = null;
+  updateLiveBtn();
+  const btn = document.getElementById('paint-btn');
+  btn.textContent = 'Painting...';
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  try {
+    const style = document.getElementById('style-mode').value;
+    const res = await fetch('/api/paint', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({style_mode: style}),
+    });
+    const data = await res.json();
+    if (data.error) {
+      alert(data.error);
+      btn.textContent = 'Paint this image';
+      btn.disabled = false;
+      btn.style.opacity = '1';
+    } else {
+      const checkDone = setInterval(async () => {
+        const s = await fetch('/api/state');
+        const d = await s.json();
+        if (!d.busy) {
+          clearInterval(checkDone);
+          btn.textContent = 'Paint this image';
+          btn.disabled = false;
+          btn.style.opacity = '1';
+        }
+      }, 2000);
+    }
+  } catch(e) {
+    alert('Paint failed: ' + e.message);
+    btn.textContent = 'Paint this image';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+async function applyPlan() {
+  const input = document.getElementById('plan-input').value;
+  try {
+    const plan = JSON.parse(input);
+    viewingIteration = null;
+    await fetch('/api/plan', {method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(plan)});
+    poll();
+    pollTarget();
+  } catch(e) { alert('Invalid JSON: ' + e.message); }
+}
+
+function togglePoll() {
+  polling = !polling;
+  document.getElementById('poll-btn').textContent = polling ? 'Pause' : 'Resume';
+}
+
+// === Init ===
+setInterval(poll, 500);
+setInterval(pollTarget, 3000);
+poll();
+pollTarget();
+
+// === Dimensional Effects ===
+const DIM_DEFAULTS = {
+  contrast_boost: 0.25,
+  complementary_shadow: 0.12,
+  van_gogh_bias: 0.0,
+  tenebrism_bias: 0.0,
+  pointillism_bias: 0.0,
+};
+
+const DIM_DECIMALS = {
+  contrast_boost: 2,
+  complementary_shadow: 2,
+  van_gogh_bias: 2,
+  tenebrism_bias: 2,
+  pointillism_bias: 2,
+};
+
+// Wire up live readout for each slider
+(function() {
+  for (const key of Object.keys(DIM_DEFAULTS)) {
+    const slider = document.getElementById('dim-' + key);
+    const readout = document.getElementById('dim-val-' + key);
+    if (!slider || !readout) continue;
+    slider.addEventListener('input', () => {
+      readout.textContent = parseFloat(slider.value).toFixed(DIM_DECIMALS[key]);
+    });
+  }
+})();
+
+function dimGetValues() {
+  const vals = {};
+  for (const key of Object.keys(DIM_DEFAULTS)) {
+    const el = document.getElementById('dim-' + key);
+    vals[key] = el ? parseFloat(el.value) : DIM_DEFAULTS[key];
+  }
+  return vals;
+}
+
+function dimReset() {
+  for (const [key, def] of Object.entries(DIM_DEFAULTS)) {
+    const slider = document.getElementById('dim-' + key);
+    const readout = document.getElementById('dim-val-' + key);
+    if (slider) slider.value = def;
+    if (readout) readout.textContent = def.toFixed(DIM_DECIMALS[key]);
+  }
+}
+
+async function dimPreview() {
+  const btn = document.getElementById('dim-preview-btn');
+  const statusEl = document.getElementById('dim-status');
+  btn.textContent = 'Painting...';
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  statusEl.textContent = '';
+  statusEl.className = 'dim-status';
+
+  try {
+    const payload = dimGetValues();
+    const res = await fetch('/api/morph_preview', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      const msg = (data && data.error) ? data.error : 'request failed';
+      if (msg === 'no target loaded') {
+        statusEl.textContent = 'no target loaded — pick one first';
+      } else {
+        statusEl.textContent = 'error: ' + msg;
+      }
+      statusEl.className = 'dim-status err';
+    } else {
+      const dur = data.duration_s != null ? data.duration_s.toFixed(1) + 's' : '?s';
+      const ssim = data.ssim != null ? data.ssim.toFixed(4) : '?';
+      const style = data.style_mode || 'default';
+      statusEl.textContent = 'painted in ' + dur + ' · ssim=' + ssim + ' · style_mode=' + style;
+      statusEl.className = 'dim-status ok';
+      // Refresh canvas immediately
+      poll();
+    }
+  } catch (e) {
+    statusEl.textContent = 'error: ' + e.message;
+    statusEl.className = 'dim-status err';
+  } finally {
+    btn.textContent = 'Preview';
+    btn.disabled = false;
+    btn.style.opacity = '1';
+  }
+}
+
+loadPersonaList();
+
+// === Zoom modal ==========================================================
+let zoomMirrorTimer = null;
+
+function openZoom() {
+  const modal = document.getElementById('zoom-modal');
+  const zoomCanvas = document.getElementById('zoom-canvas');
+  const zoomTarget = document.getElementById('zoom-target');
+  const mainCanvas = document.getElementById('canvas');
+  const mainTarget = document.getElementById('target');
+
+  // Sync target src (only if the atelier currently shows a target)
+  if (mainTarget.src && mainTarget.style.display !== 'none') {
+    zoomTarget.src = mainTarget.src;
+    zoomTarget.style.display = 'block';
+  } else {
+    zoomTarget.style.display = 'none';
+  }
+
+  // First mirror copy — immediate frame so the modal isn't blank
+  const zctx = zoomCanvas.getContext('2d');
+  zctx.clearRect(0, 0, 512, 512);
+  zctx.drawImage(mainCanvas, 0, 0);
+
+  modal.hidden = false;
+
+  // Refresh mirror at ~10fps while the modal is open
+  if (zoomMirrorTimer) clearInterval(zoomMirrorTimer);
+  zoomMirrorTimer = setInterval(() => {
+    zctx.drawImage(mainCanvas, 0, 0);
+  }, 100);
+}
+
+function closeZoom() {
+  document.getElementById('zoom-modal').hidden = true;
+  if (zoomMirrorTimer) {
+    clearInterval(zoomMirrorTimer);
+    zoomMirrorTimer = null;
+  }
+}
+
+// Wire up zoom triggers after DOMContentLoaded. The zoom-modal block sits
+// later in <body> (after this script tag) so its elements don't exist yet
+// at script execution time.
+function _wireZoom() {
+  document.getElementById('canvas').addEventListener('click', openZoom);
+  document.getElementById('target').addEventListener('click', openZoom);
+  document.getElementById('zoom-close').addEventListener('click', closeZoom);
+  document.getElementById('zoom-modal').addEventListener('click', (e) => {
+    if (e.target.id === 'zoom-modal') closeZoom();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !document.getElementById('zoom-modal').hidden) {
+      closeZoom();
+    }
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _wireZoom);
+} else {
+  _wireZoom();
+}
+</script>
+
+<!-- === Zoom modal ==================================================== -->
+<div class="zoom-modal" id="zoom-modal" hidden>
+  <button class="zoom-close" id="zoom-close" aria-label="Close zoom">&times;</button>
+  <div class="zoom-pane">
+    <div class="zoom-label">Canvas · Live</div>
+    <canvas id="zoom-canvas" width="512" height="512"></canvas>
+  </div>
+  <div class="zoom-pane">
+    <div class="zoom-label">Target</div>
+    <img id="zoom-target" alt="target">
+  </div>
+</div>
+</body>
+</html>

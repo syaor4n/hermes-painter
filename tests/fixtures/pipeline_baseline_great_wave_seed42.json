@@ -1,0 +1,16 @@
+{
+  "image_type": "balanced",
+  "style_mode": null,
+  "underpaint_strokes": 1728,
+  "edge_strokes": 96,
+  "fill_strokes": 0,
+  "mid_detail_strokes": 393,
+  "fine_detail_strokes": 262,
+  "contour_strokes": 254,
+  "highlight_strokes": 10,
+  "critique_strokes": 0,
+  "coverage": 1.0,
+  "final_ssim": 0.2794,
+  "phase_blends": null,
+  "style_schedule": null
+}

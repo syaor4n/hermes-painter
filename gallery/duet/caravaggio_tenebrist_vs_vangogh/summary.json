@@ -1,0 +1,20 @@
+{
+  "personas": [
+    "tenebrist_voice",
+    "van_gogh_voice"
+  ],
+  "n_turns": 3,
+  "reason": "converged_early",
+  "early_stopped": true,
+  "per_turn_ssim": [
+    0.26859307289123535,
+    0.26604852080345154,
+    0.26667022705078125
+  ],
+  "final_ssim": 0.26667022705078125,
+  "actions": [
+    "opening",
+    "correct",
+    "correct"
+  ]
+}

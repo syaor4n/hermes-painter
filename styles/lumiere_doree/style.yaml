@@ -1,0 +1,16 @@
+format_version: 1
+name: lumiere_doree
+author: painter-team
+license: CC0-1.0
+description: >
+  Warm golden-hour palette with lifted highlights and soft edges.
+  Use for sunsets, candlelight, warm interiors.
+extends: default
+parameters:
+  contrast_boost:         0.28
+  complementary_shadow:   0.15
+  painterly_details_bias: 0.5
+  van_gogh_bias:          0.2
+  tenebrism_bias:         0.0
+  pointillism_bias:       0.0
+  engraving_bias:         0.0

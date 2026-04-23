@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Painter Canvas</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #222;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: ui-monospace, monospace;
+      color: #888;
+    }
+    #wrap { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+    canvas { background: white; border: 1px solid #444; }
+    #label { font-size: 12px; letter-spacing: 0.1em; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <canvas id="c" width="512" height="512"></canvas>
+    <div id="label">PAINTER CANVAS</div>
+  </div>
+  <script>
+    (function () {
+      const canvas = document.getElementById('c');
+      // v15: honor ?size=N query param so hi-res mode can reuse this HTML
+      const params = new URLSearchParams(window.location.search);
+      const sizeParam = parseInt(params.get('size') || '512', 10);
+      if (!Number.isNaN(sizeParam) && sizeParam >= 256 && sizeParam <= 4096) {
+        canvas.width = sizeParam;
+        canvas.height = sizeParam;
+      }
+      document.getElementById('label').textContent = `PAINTER CANVAS · ${canvas.width}×${canvas.height}`;
+      const ctx = canvas.getContext('2d');
+
+      function clear() {
+        ctx.save();
+        // Warm off-white base — cold pure white feels like a whiteboard, not a canvas
+        ctx.fillStyle = '#fbf7ee';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Subtle canvas grain (deterministic). Low-opacity specks simulate linen weave.
+        // Seeded so every clear produces the identical texture.
+        let s = 42;
+        const rnd = () => { s = (s * 16807) % 2147483647; return (s - 1) / 2147483646; };
+        for (let i = 0; i < 3500; i++) {
+          const x = Math.floor(rnd() * canvas.width);
+          const y = Math.floor(rnd() * canvas.height);
+          const gray = 220 + Math.floor(rnd() * 30);
+          const alpha = 0.04 + rnd() * 0.08;
+          ctx.fillStyle = `rgba(${gray - 8}, ${gray - 10}, ${gray - 16}, ${alpha})`;
+          ctx.fillRect(x, y, 1 + Math.floor(rnd() * 2), 1 + Math.floor(rnd() * 2));
+        }
+        // Long linen threads (horizontal + vertical very faint lines)
+        ctx.globalAlpha = 0.025;
+        ctx.strokeStyle = '#8a7860';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i < 60; i++) {
+          const y = Math.floor(rnd() * canvas.height);
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y + (rnd() - 0.5) * 2);
+          ctx.stroke();
+        }
+        for (let i = 0; i < 60; i++) {
+          const x = Math.floor(rnd() * canvas.width);
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x + (rnd() - 0.5) * 2, canvas.height);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+
+      function drawStroke(spec) {
+        ctx.save();
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = spec.color || '#000';
+        ctx.fillStyle = spec.color || '#000';
+        ctx.lineWidth = spec.width || 2;
+        ctx.globalAlpha = spec.alpha == null ? 1 : spec.alpha;
+
+        switch (spec.type) {
+          case 'line': {
+            const [p0, p1] = spec.points;
+            ctx.beginPath();
+            ctx.moveTo(p0[0], p0[1]);
+            ctx.lineTo(p1[0], p1[1]);
+            ctx.stroke();
+            break;
+          }
+          case 'polyline': {
+            const pts = spec.points;
+            if (pts.length < 2) break;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
+            break;
+          }
+          case 'bezier': {
+            const [p0, c1, c2, p1] = spec.points;
+            ctx.beginPath();
+            ctx.moveTo(p0[0], p0[1]);
+            ctx.bezierCurveTo(c1[0], c1[1], c2[0], c2[1], p1[0], p1[1]);
+            ctx.stroke();
+            break;
+          }
+          case 'fill_rect':
+            ctx.fillRect(spec.x, spec.y, spec.w, spec.h);
+            break;
+          case 'fill_circle':
+            ctx.beginPath();
+            ctx.arc(spec.x, spec.y, spec.r, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          case 'fill_poly': {
+            const pts = spec.points;
+            if (pts.length < 3) break;
+            ctx.beginPath();
+            ctx.moveTo(pts[0][0], pts[0][1]);
+            for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.closePath();
+            ctx.fill();
+            break;
+          }
+          case 'brush': {
+            // Textured painterly brush stroke — bristles + color variation + ragged edges.
+            // {type:"brush", points:[[x,y],...], color:"#hex", width:20, alpha:0.8, texture:"bristle"|"smooth"}
+            //   texture="bristle" (default): looks like real paint on canvas
+            //   texture="smooth": legacy ribbon fill (for clean geometric strokes)
+            const pts = spec.points;
+            if (pts.length < 2) break;
+            const w = spec.width || 20;
+            const base_alpha = spec.alpha == null ? 0.85 : spec.alpha;
+            const texture = spec.texture || 'bristle';
+            const color = spec.color || '#000000';
+            const r = parseInt(color.slice(1, 3), 16);
+            const g = parseInt(color.slice(3, 5), 16);
+            const b = parseInt(color.slice(5, 7), 16);
+
+            // Deterministic PRNG seeded by stroke position + color (reproducible)
+            let seed = Math.floor((pts[0][0] * 73 + pts[0][1] * 37 + w * 13 + r * 7 + g * 11 + b * 17) % 2147483646);
+            if (seed <= 0) seed = 1;
+            const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+            if (texture === 'smooth') {
+              // Legacy smooth ribbon (for geometric strokes)
+              ctx.globalAlpha = base_alpha;
+              ctx.fillStyle = color;
+              const left = [], right = [];
+              for (let i = 0; i < pts.length; i++) {
+                const p0 = pts[Math.max(0, i - 1)];
+                const p1 = pts[i];
+                const p2 = pts[Math.min(pts.length - 1, i + 1)];
+                const dx = p2[0] - p0[0];
+                const dy = p2[1] - p0[1];
+                const len = Math.sqrt(dx * dx + dy * dy) || 1;
+                const nx = -dy / len;
+                const ny = dx / len;
+                const hw = w / 2;
+                left.push([p1[0] + nx * hw, p1[1] + ny * hw]);
+                right.push([p1[0] - nx * hw, p1[1] - ny * hw]);
+              }
+              ctx.beginPath();
+              ctx.moveTo(left[0][0], left[0][1]);
+              for (let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+              for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+              ctx.closePath();
+              ctx.fill();
+              break;
+            }
+
+            // === TEXTURED BRISTLE BRUSH ===
+
+            // Pre-compute normals at each path point
+            const normals = [];
+            for (let i = 0; i < pts.length; i++) {
+              const p0 = pts[Math.max(0, i - 1)];
+              const p2 = pts[Math.min(pts.length - 1, i + 1)];
+              const dx = p2[0] - p0[0];
+              const dy = p2[1] - p0[1];
+              const len = Math.sqrt(dx * dx + dy * dy) || 1;
+              normals.push([-dy / len, dx / len]);
+            }
+
+            // Subdivide the path so bristles have enough sample points to wobble over.
+            // 4 waypoints → 32 subdivided points; linear interpolation is enough for smooth paths.
+            const SUB = 8;  // subdivisions per segment
+            const dense = [];
+            const dense_normals = [];
+            for (let i = 0; i < pts.length - 1; i++) {
+              const p1 = pts[i];
+              const p2 = pts[i + 1];
+              const n1 = normals[i];
+              const n2 = normals[i + 1];
+              const steps = (i === pts.length - 2) ? SUB + 1 : SUB;
+              for (let k = 0; k < steps; k++) {
+                const t = k / SUB;
+                dense.push([p1[0] + (p2[0] - p1[0]) * t, p1[1] + (p2[1] - p1[1]) * t]);
+                dense_normals.push([n1[0] + (n2[0] - n1[0]) * t, n1[1] + (n2[1] - n1[1]) * t]);
+              }
+            }
+
+            // Layer 1: very faint wash to fill gaps BETWEEN bristles — low alpha, narrow
+            ctx.globalAlpha = base_alpha * 0.18;
+            ctx.fillStyle = color;
+            const wash_left = [], wash_right = [];
+            for (let i = 0; i < dense.length; i++) {
+              const [nx, ny] = dense_normals[i];
+              const hw = w * 0.45;  // slightly narrower than bristle span
+              wash_left.push([dense[i][0] + nx * hw, dense[i][1] + ny * hw]);
+              wash_right.push([dense[i][0] - nx * hw, dense[i][1] - ny * hw]);
+            }
+            ctx.beginPath();
+            ctx.moveTo(wash_left[0][0], wash_left[0][1]);
+            for (let i = 1; i < wash_left.length; i++) ctx.lineTo(wash_left[i][0], wash_left[i][1]);
+            for (let i = wash_right.length - 1; i >= 0; i--) ctx.lineTo(wash_right[i][0], wash_right[i][1]);
+            ctx.closePath();
+            ctx.fill();
+
+            // Layer 2: bristle streaks — this is what makes it look like paint
+            const n_bristles = Math.max(12, Math.min(32, Math.floor(w * 0.9)));
+            ctx.lineCap = 'round';
+
+            for (let bi = 0; bi < n_bristles; bi++) {
+              const t = bi / (n_bristles - 1); // 0..1 across width
+              // Offset perpendicular with non-uniform jitter (bristles clump a bit)
+              const offset = (t - 0.5) * w * (0.95 + rand() * 0.1) + (rand() - 0.5) * 2.5;
+
+              // Color variation — edges slightly darker, random hue drift per bristle
+              const edge_dist = Math.abs(t - 0.5) * 2;  // 0 center, 1 edge
+              const hue_shift = (rand() - 0.5) * 28;
+              const val_shift = (rand() - 0.5) * 30 - edge_dist * 8;
+              const br = Math.max(0, Math.min(255, r + hue_shift + val_shift));
+              const bg = Math.max(0, Math.min(255, g + hue_shift * 0.7 + val_shift * 0.95));
+              const bb = Math.max(0, Math.min(255, b + hue_shift * 1.3 + val_shift * 0.85));
+
+              // Alpha: varied, some bristles strong, others nearly dry
+              const bristle_alpha = base_alpha * (0.45 + rand() * 0.55);
+              const bristle_w = 0.7 + rand() * 1.4;
+
+              // Ragged ends — very light trim (bristles cover almost the full length)
+              const start_trim = rand() * 0.05;
+              const end_trim = rand() * 0.08;
+
+              ctx.globalAlpha = bristle_alpha;
+              ctx.strokeStyle = `rgb(${br|0}, ${bg|0}, ${bb|0})`;
+              ctx.lineWidth = bristle_w;
+
+              ctx.beginPath();
+              let started = false;
+              for (let j = 0; j < dense.length; j++) {
+                const tau = dense.length === 1 ? 0 : j / (dense.length - 1);
+                if (tau < start_trim || tau > 1 - end_trim) continue;
+                const [nx, ny] = dense_normals[j];
+                // Real bristles weave — much larger wobble than before
+                const wobble_x = (rand() - 0.5) * 2.5;
+                const wobble_y = (rand() - 0.5) * 2.5;
+                const x = dense[j][0] + nx * offset + wobble_x;
+                const y = dense[j][1] + ny * offset + wobble_y;
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else { ctx.lineTo(x, y); }
+              }
+              ctx.stroke();
+            }
+
+            // Layer 3: subtle darker "wet" accents — 3-5 darker micro-streaks
+            // (simulates where the brush picked up more pigment)
+            const n_accents = 3 + Math.floor(rand() * 3);
+            for (let ai = 0; ai < n_accents; ai++) {
+              const t = rand();
+              const offset = (t - 0.5) * w * 0.85;
+              const dr = Math.max(0, r - 25 - rand() * 20);
+              const dg = Math.max(0, g - 25 - rand() * 20);
+              const db = Math.max(0, b - 25 - rand() * 20);
+              ctx.globalAlpha = base_alpha * 0.4;
+              ctx.strokeStyle = `rgb(${dr|0}, ${dg|0}, ${db|0})`;
+              ctx.lineWidth = 0.6 + rand() * 0.7;
+              ctx.beginPath();
+              let started = false;
+              const start_trim = 0.05 + rand() * 0.3;
+              const end_trim = 0.05 + rand() * 0.3;
+              for (let j = 0; j < dense.length; j++) {
+                const tau = dense.length === 1 ? 0 : j / (dense.length - 1);
+                if (tau < start_trim || tau > 1 - end_trim) continue;
+                const [nx, ny] = dense_normals[j];
+                const x = dense[j][0] + nx * offset + (rand() - 0.5) * 2;
+                const y = dense[j][1] + ny * offset + (rand() - 0.5) * 2;
+                if (!started) { ctx.moveTo(x, y); started = true; }
+                else { ctx.lineTo(x, y); }
+              }
+              ctx.stroke();
+            }
+            break;
+          }
+          case 'dab': {
+            // Single dab of paint — an ellipse pressed at an angle
+            // {type:"dab", x:100, y:200, w:30, h:15, angle:0.3, color:"#hex", alpha:0.9}
+            const cx = spec.x;
+            const cy = spec.y;
+            const dw = spec.w || 20;
+            const dh = spec.h || dw * 0.6;
+            const angle = spec.angle || 0;
+            ctx.globalAlpha = spec.alpha == null ? 0.9 : spec.alpha;
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle);
+            ctx.beginPath();
+            ctx.ellipse(0, 0, dw / 2, dh / 2, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            break;
+          }
+          case 'fog': {
+            // Atmospheric haze — a soft-edge rectangle with linear gradient fade.
+            // {type:"fog", x, y, w, h, color:"#hex", alpha:0.3,
+            //  direction: "horizontal"|"vertical"|"radial" (default horizontal),
+            //  fade: 0.0..1.0 (how much edges fade, default 0.4)}
+            const x = spec.x || 0;
+            const y = spec.y || 0;
+            const w = spec.w || canvas.width;
+            const h = spec.h || canvas.height;
+            const a = spec.alpha == null ? 0.3 : spec.alpha;
+            const color = spec.color || '#cccccc';
+            const direction = spec.direction || 'horizontal';
+            const fade = spec.fade == null ? 0.4 : spec.fade;
+            let grad;
+            if (direction === 'vertical') {
+              grad = ctx.createLinearGradient(0, y, 0, y + h);
+              grad.addColorStop(0, 'rgba(0,0,0,0)');
+              grad.addColorStop(fade, color);
+              grad.addColorStop(1 - fade, color);
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+            } else if (direction === 'radial') {
+              const cx = x + w / 2;
+              const cy = y + h / 2;
+              const r = Math.max(w, h) / 2;
+              grad = ctx.createRadialGradient(cx, cy, r * (1 - fade), cx, cy, r);
+              grad.addColorStop(0, color);
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+            } else {  // horizontal
+              grad = ctx.createLinearGradient(x, 0, x + w, 0);
+              grad.addColorStop(0, 'rgba(0,0,0,0)');
+              grad.addColorStop(fade, color);
+              grad.addColorStop(1 - fade, color);
+              grad.addColorStop(1, 'rgba(0,0,0,0)');
+            }
+            ctx.globalAlpha = a;
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, w, h);
+            break;
+          }
+          case 'glow': {
+            // Radial gradient glow — ideal for suns, moons, lamps, halos.
+            // {type:"glow", x, y, r, stops: [[0, "#fff"], [0.4, "#fc8"], [1, "#000"]], alpha: 0.9}
+            // stops format: array of [position 0..1, "#rrggbb"] OR rgba(..., a) strings.
+            // If stops is missing, a default warm sun gradient is used based on `color`.
+            const cx = spec.x;
+            const cy = spec.y;
+            const r = spec.r || 30;
+            const a = spec.alpha == null ? 1.0 : spec.alpha;
+            let stops = spec.stops;
+            if (!stops) {
+              const base = spec.color || '#ffd870';
+              stops = [
+                [0.00, '#ffffff'],
+                [0.15, '#fff4c8'],
+                [0.45, base],
+                [0.85, base.replace('#', 'rgba(') + ',0)' ], // fallback, but most callers supply stops
+                [1.00, 'rgba(0,0,0,0)'],
+              ];
+              // Simpler reliable default using canvas color parsing
+              stops = [
+                [0.00, '#ffffff'],
+                [0.20, '#fff2b0'],
+                [0.50, base],
+                [1.00, 'rgba(0,0,0,0)'],
+              ];
+            }
+            const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+            for (const [t, c] of stops) grad.addColorStop(Math.max(0, Math.min(1, t)), c);
+            ctx.globalAlpha = a;
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(cx, cy, r, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          }
+          case 'splat': {
+            // Paint splat — cluster of overlapping circles
+            // {type:"splat", x:100, y:200, r:15, color:"#hex", alpha:0.7, count:5}
+            const cx = spec.x;
+            const cy = spec.y;
+            const r = spec.r || 15;
+            const count = spec.count || 5;
+            ctx.globalAlpha = spec.alpha == null ? 0.7 : spec.alpha;
+            // Seeded random for reproducibility
+            let seed = (cx * 73 + cy * 37 + r * 13) % 1000;
+            function rand() { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; }
+            for (let i = 0; i < count; i++) {
+              const sx = cx + (rand() - 0.5) * r * 1.5;
+              const sy = cy + (rand() - 0.5) * r * 1.5;
+              const sr = r * (0.3 + rand() * 0.7);
+              ctx.beginPath();
+              ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            break;
+          }
+          default:
+            console.warn('unknown stroke type:', spec.type);
+        }
+        ctx.restore();
+      }
+
+      function getPNG() {
+        return canvas.toDataURL('image/png').split(',')[1];
+      }
+
+      function drawStrokes(list) {
+        if (!Array.isArray(list)) return 0;
+        for (let i = 0; i < list.length; i++) drawStroke(list[i]);
+        return list.length;
+      }
+
+      function snapshot() {
+        // Returns an ImageData-like handle stored on the window for rollback.
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const id = 's_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+        window.__painterSnapshots = window.__painterSnapshots || {};
+        window.__painterSnapshots[id] = img;
+        return id;
+      }
+
+      function restore(id) {
+        const img = window.__painterSnapshots && window.__painterSnapshots[id];
+        if (!img) return false;
+        ctx.putImageData(img, 0, 0);
+        return true;
+      }
+
+      function dropSnapshot(id) {
+        if (window.__painterSnapshots && window.__painterSnapshots[id]) {
+          delete window.__painterSnapshots[id];
+          return true;
+        }
+        return false;
+      }
+
+      window.painter = {
+        clear,
+        drawStroke,
+        drawStrokes,
+        getPNG,
+        snapshot,
+        restore,
+        dropSnapshot,
+        width: canvas.width,
+        height: canvas.height,
+      };
+      clear();
+    })();
+  </script>
+</body>
+</html>

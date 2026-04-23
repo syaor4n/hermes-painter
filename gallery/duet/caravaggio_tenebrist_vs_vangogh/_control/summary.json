@@ -1,0 +1,18 @@
+{
+  "personas": [
+    "tenebrist_voice",
+    "tenebrist_voice"
+  ],
+  "n_turns": 2,
+  "reason": "max_turns",
+  "early_stopped": false,
+  "per_turn_ssim": [
+    0.26859307289123535,
+    0.26767078042030334
+  ],
+  "final_ssim": 0.26767078042030334,
+  "actions": [
+    "opening",
+    "correct"
+  ]
+}

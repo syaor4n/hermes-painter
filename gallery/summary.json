@@ -1,0 +1,42 @@
+[
+  {
+    "slug": "great_wave_default",
+    "target": "targets/masterworks/great_wave.jpg",
+    "style_mode": null,
+    "ssim": 0.2787793278694153,
+    "coverage": 0.998,
+    "duration_s": 5.1,
+    "underpaint_strokes": 1728,
+    "total_strokes": 2743
+  },
+  {
+    "slug": "the_bedroom_van_gogh",
+    "target": "targets/masterworks/the_bedroom.jpg",
+    "style_mode": "van_gogh",
+    "ssim": 0.2541881799697876,
+    "coverage": 0.992,
+    "duration_s": 3.3,
+    "underpaint_strokes": 1728,
+    "total_strokes": 2543
+  },
+  {
+    "slug": "caravaggio_tenebrism",
+    "target": "targets/masterworks/caravaggio_resurrection.jpg",
+    "style_mode": "tenebrism",
+    "ssim": 0.26859307289123535,
+    "coverage": null,
+    "duration_s": 7.1,
+    "underpaint_strokes": 4525,
+    "total_strokes": 5822
+  },
+  {
+    "slug": "seurat_pointillism",
+    "target": "targets/masterworks/seurat_grande_jatte.jpg",
+    "style_mode": "pointillism",
+    "ssim": 0.29637765884399414,
+    "coverage": null,
+    "duration_s": 2.3,
+    "underpaint_strokes": 12288,
+    "total_strokes": 12288
+  }
+]

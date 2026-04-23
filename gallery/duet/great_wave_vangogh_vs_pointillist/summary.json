@@ -1,0 +1,20 @@
+{
+  "personas": [
+    "van_gogh_voice",
+    "pointillist_voice"
+  ],
+  "n_turns": 3,
+  "reason": "converged_early",
+  "early_stopped": true,
+  "per_turn_ssim": [
+    0.2861537039279938,
+    0.28475290536880493,
+    0.28368881344795227
+  ],
+  "final_ssim": 0.28368881344795227,
+  "actions": [
+    "opening",
+    "correct",
+    "correct"
+  ]
+}

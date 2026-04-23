@@ -1,0 +1,38 @@
+[
+  {
+    "slug": "mona_lisa_vangogh_vs_tenebrist",
+    "target": "targets/masterworks/mona_lisa.jpg",
+    "personas": [
+      "van_gogh_voice",
+      "tenebrist_voice"
+    ],
+    "final_ssim": 0.31631577014923096,
+    "reason": "converged_early",
+    "early_stopped": true,
+    "n_turns": 3
+  },
+  {
+    "slug": "great_wave_vangogh_vs_pointillist",
+    "target": "targets/masterworks/great_wave.jpg",
+    "personas": [
+      "van_gogh_voice",
+      "pointillist_voice"
+    ],
+    "final_ssim": 0.28368881344795227,
+    "reason": "converged_early",
+    "early_stopped": true,
+    "n_turns": 3
+  },
+  {
+    "slug": "caravaggio_tenebrist_vs_vangogh",
+    "target": "targets/masterworks/caravaggio_resurrection.jpg",
+    "personas": [
+      "tenebrist_voice",
+      "van_gogh_voice"
+    ],
+    "final_ssim": 0.26667022705078125,
+    "reason": "converged_early",
+    "early_stopped": true,
+    "n_turns": 3
+  }
+]
