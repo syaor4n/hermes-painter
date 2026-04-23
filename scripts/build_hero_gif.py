@@ -1,13 +1,20 @@
-"""Build the README hero GIF: animated cross-fade through the learning arc.
+"""Build the README hero GIF: animated three-frame arc through the memory demo.
 
-Reads gallery/learning/run_00_cold.png → run_05_primed.png → run_15_primed.png
-and produces gallery/learning/hero_arc.gif — a looping animation that
-hold each snapshot for ~1s, cross-fades into the next over ~10 frames,
-with a small caption strip ("cold" / "primed x5" / "primed x15") at the
-bottom.
+Reads the output of scripts/demo_memory_arc.py (target + run_cold.png +
+run_primed.png) and produces gallery/learning/hero_arc.gif — a looping
+animation holding each frame for ~1s with a short crossfade.
+
+Default inputs: gallery/learning/{target.png, run_cold.png, run_primed.png}.
+Override with --target / --cold / --primed CLI flags.
+
+The GIF frames:
+  1. the target reference image (what the agent is trying to paint)
+  2. the cold run (apply_feedback=False, zero promoted skills)
+  3. the primed run (apply_feedback=True after 5 priming paints)
 """
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -15,19 +22,13 @@ from PIL import Image, ImageDraw, ImageFont
 ROOT = Path(__file__).resolve().parent.parent
 GALLERY = ROOT / "gallery" / "learning"
 
-SNAPSHOTS = [
-    (GALLERY / "run_00_cold.png", "cold (0 priming runs)"),
-    (GALLERY / "run_05_primed.png", "primed after 5"),
-    (GALLERY / "run_15_primed.png", "primed after 15"),
-]
-
-FRAME_SIZE = 320                  # 512 → 320 for small file size
+# Visual tuning
+FRAME_SIZE = 320
 CAPTION_HEIGHT = 32
 HOLD_FRAMES = 14                  # ~1s at 70ms/frame
-FADE_FRAMES = 6                   # ~0.4s cross-fade
+FADE_FRAMES = 6                   # ~0.4s crossfade
 FRAME_MS = 70
-PALETTE_COLORS = 128              # quantize to 128-color palette to shrink GIF
-OUTPUT = GALLERY / "hero_arc.gif"
+PALETTE_COLORS = 128
 
 
 def _load_square(path: Path) -> Image.Image:
@@ -62,8 +63,13 @@ def _compose(image: Image.Image, caption: str, font) -> Image.Image:
     return canvas
 
 
-def main() -> None:
-    frames_rgb = [(_load_square(p), c) for p, c in SNAPSHOTS]
+def build(target_path: Path, cold_path: Path, primed_path: Path, out_path: Path) -> None:
+    snapshots = [
+        (target_path, "target"),
+        (cold_path, "cold (0 priming runs)"),
+        (primed_path, "primed after 5 priming runs"),
+    ]
+    frames_rgb = [(_load_square(p), c) for p, c in snapshots]
     font = _load_font()
 
     composed = [_compose(img, cap, font) for img, cap in frames_rgb]
@@ -74,16 +80,13 @@ def main() -> None:
     n = len(composed)
     for i in range(n):
         cur = composed[i]
-        nxt = composed[(i + 1) % n]
         cur_img, cur_cap = frames_rgb[i]
         nxt_img, nxt_cap = frames_rgb[(i + 1) % n]
 
-        # Hold current frame
         for _ in range(HOLD_FRAMES):
             out_frames.append(cur)
             durations.append(FRAME_MS)
 
-        # Cross-fade image; cut captions at the midpoint for readability
         for f in range(1, FADE_FRAMES):
             t = f / FADE_FRAMES
             blended_img = Image.blend(cur_img, nxt_img, t)
@@ -91,13 +94,14 @@ def main() -> None:
             out_frames.append(_compose(blended_img, caption, font))
             durations.append(FRAME_MS)
 
-    # Quantize to an adaptive palette for smaller GIF size; all frames share
-    # the first frame's palette so transitions don't re-dither noisily.
-    quantized = [f.quantize(colors=PALETTE_COLORS, method=Image.MEDIANCUT, dither=Image.FLOYDSTEINBERG)
-                 for f in out_frames]
+    quantized = [
+        f.quantize(colors=PALETTE_COLORS, method=Image.MEDIANCUT,
+                    dither=Image.FLOYDSTEINBERG)
+        for f in out_frames
+    ]
 
     quantized[0].save(
-        OUTPUT,
+        out_path,
         save_all=True,
         append_images=quantized[1:],
         duration=durations,
@@ -105,8 +109,23 @@ def main() -> None:
         optimize=True,
         disposal=2,
     )
-    print(f"[hero-gif] wrote {OUTPUT}  frames={len(out_frames)}  "
-          f"size={OUTPUT.stat().st_size // 1024} KB")
+    print(f"[hero-gif] wrote {out_path}  frames={len(out_frames)}  "
+          f"size={out_path.stat().st_size // 1024} KB")
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--target", type=Path, default=GALLERY / "target.png")
+    ap.add_argument("--cold", type=Path, default=GALLERY / "run_cold.png")
+    ap.add_argument("--primed", type=Path, default=GALLERY / "run_primed.png")
+    ap.add_argument("--out", type=Path, default=GALLERY / "hero_arc.gif")
+    args = ap.parse_args()
+
+    for path in (args.target, args.cold, args.primed):
+        if not path.exists():
+            ap.error(f"input not found: {path}")
+
+    build(args.target, args.cold, args.primed, args.out)
 
 
 if __name__ == "__main__":

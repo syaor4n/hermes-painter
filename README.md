@@ -3,9 +3,9 @@
 [![CI](https://github.com/syaor4n/hermes-painter/actions/workflows/ci.yml/badge.svg)](https://github.com/syaor4n/hermes-painter/actions/workflows/ci.yml)
 
 <p align="center">
-  <img src="./gallery/learning/hero_arc.gif" width="320" alt="Animated learning arc: the same van_gogh prompt painted cold, then after 5 and 15 priming runs, as the agent's skills library grows."/>
+  <img src="./gallery/learning/hero_arc.gif" width="320" alt="Animated learning arc: Hokusai's Great Wave painted in van_gogh style, cycling through target, cold paint, and primed paint after 5 priming runs."/>
   <br/>
-  <sub><i>Same prompt (<code>"a lonely fisherman at dusk"</code>, van_gogh, seed 42), painted three times as the agent's memory grows. Cold → primed after 5 → primed after 15. Contrast, palette, and atmosphere tighten without the caller changing a flag — the skills library has learned.</i></sub>
+  <sub><i>Hokusai's <i>The Great Wave off Kanagawa</i>, painted in van_gogh style, seed 42. The animation cycles through the target (reference), a <b>cold</b> paint (no priming, zero applied skills), and a <b>primed</b> paint after 5 priming runs on feature-nearest neighbors. Same seed, same style — only the skills state differs between cold and primed.</i></sub>
 </p>
 
 <p align="center">
@@ -68,26 +68,30 @@ less on simpler targets like `rothko_purple_white_red.jpg`.
 
 ### Under the hood — the dimensional-effects feedback loop
 
-The hand-baked arc above was produced by priming the same target 15
-times (0 / 5 / 15 snapshots) — showing the same mechanism the demo
-reproduces on-demand with 5 priming runs:
+The side-by-side below is a real, unedited `scripts/demo_memory_arc.py`
+output — the same command anyone cloning the repo can reproduce:
 
 ![learning arc](./gallery/learning/side_by_side.png)
 
-| snapshot | priming runs | applied skills | contrast_boost | **SSIM** | ground palette match |
+| run | priming runs | applied skills | contrast_boost | **SSIM** | strokes |
 |---|---:|---:|---:|:---:|---:|
-| **run_00 (cold)** | 0 | 0 | 0.25 (+0.00) | **0.427** | 0.27 |
-| **run_05** | 5 | 3 | 0.34 (+0.09) | **0.442** | 0.34 |
-| **run_15** | 15 | 5 | 0.42 (+0.17) | **0.447** | 0.36 |
+| **cold** | 0 | 0 | 0.25 (default) | **0.303** | 2 324 |
+| **primed** | 5 | 1 | 0.28 (+0.03) | **0.301** | 2 324 |
 
-Each priming run writes a reflection. `skill_promote` scans recurring
-`what_worked` phrases and promotes them to skills carrying numeric
-parameter deltas. On the next paint, those deltas sum and shift the
-pipeline's actual emission — `contrast_boost` drifts from `+0.00` →
-`+0.09` → `+0.17` across the three snapshots without the caller asking
-for it. SSIM rises, palette fidelity rises with it.
+Five priming paints on feature-nearest neighbors each write a
+reflection. `skill_promote` scans recurring `what_worked` phrases and
+distills three new skills: `promoted_style_mode_van_gogh`,
+`promoted_image_type_balanced`, and `promoted_saliency_mask`. Only the
+second of those is in-scope for great_wave's detected image_type
+(`balanced`), so exactly one skill applies to the primed run — biasing
+`contrast_boost` from the baseline `0.25` to `0.28`.
 
-Full writeup: [`gallery/learning/comparison.md`](./gallery/learning/comparison.md).
+The SSIM delta is essentially flat at this seed. That's honest output,
+not a cherry-picked win: the memory arc is **gradual by design**, not a
+single-step leap. What the demo proves is that the full learning
+mechanism ran end-to-end — 5 reflections written, 3 skills promoted,
+1 applied to the primed paint's pipeline — all in one command, all
+reproducible, all committed to disk in the sandbox for inspection.
 
 ## Gallery — single paints, varied styles
 

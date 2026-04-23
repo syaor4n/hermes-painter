@@ -1,0 +1,105 @@
+{
+  "ts": "2026-04-23T14:27:28Z",
+  "target": "targets/masterworks/great_wave.jpg",
+  "image_type": "balanced",
+  "style_mode": "van_gogh",
+  "seed": 42,
+  "sandbox_path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650",
+  "priming": {
+    "k_requested": 5,
+    "k_used": 5,
+    "targets": [
+      "targets/masterworks/warhol_marilyn.jpg",
+      "targets/masterworks/rothko_purple_white_red.jpg",
+      "targets/masterworks/the_bedroom.jpg",
+      "targets/masterworks/okeeffe_blue_green_music.jpg",
+      "targets/masterworks/american_gothic.jpg"
+    ],
+    "note": "auto-selected 5 same-type neighbors"
+  },
+  "cold": {
+    "ssim": 0.3025878965854645,
+    "n_strokes": 2324,
+    "applied_skills": [],
+    "effective_params": {},
+    "elapsed_s": 6.51
+  },
+  "primed": {
+    "ssim": 0.301249235868454,
+    "n_strokes": 2324,
+    "applied_skills": [
+      {
+        "name": "promoted_image_type_balanced",
+        "confidence": 3,
+        "effects": {
+          "contrast_boost": 0.03
+        },
+        "scope": [
+          "balanced"
+        ]
+      }
+    ],
+    "effective_params": {
+      "image_type": "balanced",
+      "contrast_boost": 0.28,
+      "complementary_shadow": 0.12,
+      "critique_rounds": 0,
+      "painterly_details": false,
+      "style_mode": "van_gogh",
+      "style_mode_auto": null,
+      "deltas": {
+        "contrast_boost": 0.03,
+        "complementary_shadow": 0.0,
+        "critique_rounds": 0,
+        "painterly_details_activated_by_skills": false
+      }
+    },
+    "elapsed_s": 5.68
+  },
+  "delta": {
+    "ssim": -0.0013,
+    "applied_skills_count": 1,
+    "effective_params": {
+      "contrast_boost": 0.28,
+      "complementary_shadow": 0.12,
+      "critique_rounds": 0.0,
+      "painterly_details": 0.0
+    }
+  },
+  "promoted": [
+    {
+      "name": "promoted_style_mode_van_gogh",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_style_mode_van_gogh.md",
+      "count": 3,
+      "effects": {
+        "contrast_boost": 0.03,
+        "van_gogh_bias": 0.35
+      },
+      "scope": [
+        "brief"
+      ]
+    },
+    {
+      "name": "promoted_image_type_balanced",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_image_type_balanced.md",
+      "count": 3,
+      "effects": {
+        "contrast_boost": 0.03
+      },
+      "scope": [
+        "balanced"
+      ]
+    },
+    {
+      "name": "promoted_saliency_mask",
+      "path": "/var/folders/yp/d845y30x5fl44c75rkglrs280000gn/T/memory_arc_20260423_142650/skills/promoted_saliency_mask.md",
+      "count": 3,
+      "effects": {
+        "contrast_boost": 0.03
+      },
+      "scope": [
+        "brief"
+      ]
+    }
+  ]
+}
