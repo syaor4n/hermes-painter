@@ -587,6 +587,10 @@ def main(argv: list[str] | None = None) -> int:
                      help="Default: gallery/learning/<YYYYMMDD_HHMMSS>/")
     ap.add_argument("--priming", default="",
                      help="Comma-separated priming paths (overrides auto-selection)")
+    ap.add_argument("--priming-count", type=int, default=5,
+                     help="How many priming targets to auto-select (default 5). "
+                          "Higher values accumulate more reflections and may produce "
+                          "a larger cold→primed delta.")
     ap.add_argument("--viewer-port", type=int, default=18080)
     ap.add_argument("--tools-port", type=int, default=18765)
     ap.add_argument("--keep-sandbox", action="store_true", default=True)
@@ -650,12 +654,12 @@ def main(argv: list[str] | None = None) -> int:
             priming_note = f"explicit override, {len(priming)} paths"
         else:
             priming = pick_priming_targets(
-                args.target, style_mode=args.style_mode, k=5,
+                args.target, style_mode=args.style_mode, k=args.priming_count,
             )
             priming_note = (
                 f"auto-selected {len(priming)} same-type neighbors"
-                if len(priming) == 5
-                else f"only {len(priming)} same-type candidates available"
+                if len(priming) == args.priming_count
+                else f"only {len(priming)} same-type candidates available (requested {args.priming_count})"
             )
         print(f"\n[demo] PRIMING x{len(priming)}  ({priming_note})")
         for i, p in enumerate(priming, 1):
@@ -727,7 +731,7 @@ def main(argv: list[str] | None = None) -> int:
             "seed": args.seed,
             "sandbox_path": str(sandbox_root),
             "priming": {
-                "k_requested": 5,
+                "k_requested": args.priming_count,
                 "k_used": len(priming),
                 "targets": [str(p.relative_to(_ROOT) if p.is_absolute() and str(p).startswith(str(_ROOT)) else p) for p in priming],
                 "note": priming_note,
@@ -781,7 +785,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n[demo] ✓ done.")
         print(f"[demo]   side-by-side: {out_dir / 'side_by_side.png'}")
         print(f"[demo]   summary:      {out_dir / 'summary.json'}")
-        if len(priming) < 5:
+        if len(priming) < args.priming_count:
             exit_code = 1  # soft-fail signal: fewer primings than requested
 
     except RuntimeError as e:

@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/syaor4n/hermes-painter/actions/workflows/ci.yml/badge.svg)](https://github.com/syaor4n/hermes-painter/actions/workflows/ci.yml)
 
+### Run `make judge-demo`. In 30 seconds you get a painter that learns.
+
 <p align="center">
   <img src="./gallery/learning/hero_arc.gif" width="320" alt="Animated learning arc: Hokusai's Great Wave painted in van_gogh style, cycling through target, cold paint, and primed paint after 5 priming runs."/>
   <br/>
@@ -117,6 +119,24 @@ design**, and what this run proves is that the whole mechanism ran
 end-to-end without the caller asking for anything beyond the target.
 All artifacts are committed to disk in the sandbox and reproducible via
 `python scripts/demo_memory_arc.py --seed 7`.
+
+> **Turn the dial.** Run with `--priming-count 10` (or higher) for a
+> larger cumulative effect: more priming reflections → more promoted
+> skills → bigger summed parameter shift. The default 5 is the honest
+> baseline; `make judge-demo-strong` ships the higher-count variant.
+> (Note: each image_type bucket has a finite candidate pool — great_wave
+> saturates at 6 same-type neighbors, so `--priming-count 10` produces
+> the same promotions on that specific target.)
+
+**Where the delta actually shows up.** The full-canvas comparison is
+legitimately subtle. Here is a 4× zoom on the 128×128 patch with the
+largest cold→primed pixel distance — the wave base / boat region where
+contrast_boost's effect on dark-stroke saturation reads clearest:
+
+![detail crop](./gallery/learning/detail_crop.png)
+
+Regenerate with `python scripts/build_detail_crop.py` (finds the
+max-diff patch automatically).
 
 ## Gallery — single paints, varied styles
 

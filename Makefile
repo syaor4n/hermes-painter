@@ -3,7 +3,7 @@ PORT_VIEWER ?= 8080
 PORT_TOOLS ?= 8765
 RENDERER ?= browser
 
-.PHONY: help install install-pil viewer tools demo demo-stop judge-demo duet learn-from-targets test clean-servers
+.PHONY: help install install-pil viewer tools demo demo-stop judge-demo judge-demo-strong duet learn-from-targets test clean-servers
 
 help:
 	@echo "hermes-painter — make targets"
@@ -11,6 +11,8 @@ help:
 	@echo "  make install          pip install -e . + playwright install chromium"
 	@echo "  make install-pil      pip install -e . only (no Chromium; RENDERER=pil)"
 	@echo "  make judge-demo       self-check + start stack + paint one canonical demo (for judges)"
+	@echo "  make judge-demo-strong run the full memory arc end-to-end with --priming-count 10"
+	@echo "                        (writes gallery/judge-demo-strong/{side_by_side,detail_crop,summary}.*)"
 	@echo "  make demo             start viewer :$(PORT_VIEWER) + tool server :$(PORT_TOOLS) in background"
 	@echo "  make demo-stop        stop both servers"
 	@echo "  make viewer           start only the viewer (foreground)"
@@ -185,6 +187,45 @@ demo: clean-servers
 	@echo "Or open http://127.0.0.1:$(PORT_VIEWER) and click a preset tile."
 
 demo-stop: clean-servers
+
+judge-demo-strong:
+	@echo ""
+	@echo "╔═══════════════════════════════════════════════════════════════╗"
+	@echo "║      Hermes Painter — Judge Demo (STRONG, 10 priming)         ║"
+	@echo "╚═══════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "Running the full memory arc end-to-end with --priming-count 10."
+	@echo "Output lands in gallery/judge-demo-strong/ (~6-8 minutes)."
+	@echo ""
+	@if [ ! -x "$(PYTHON)" ]; then \
+		echo "  ✗ Python not found at $(PYTHON)"; \
+		echo "    Run:  make install-pil"; \
+		exit 1; \
+	fi
+	@mkdir -p gallery/judge-demo-strong
+	$(PYTHON) scripts/demo_memory_arc.py \
+		--target targets/masterworks/great_wave.jpg \
+		--style-mode van_gogh --seed 7 \
+		--priming-count 10 \
+		--out-dir gallery/judge-demo-strong \
+		--clean-sandbox \
+		--viewer-port 28080 --tools-port 28765
+	$(PYTHON) scripts/build_detail_crop.py \
+		--cold gallery/judge-demo-strong/run_cold.png \
+		--primed gallery/judge-demo-strong/run_primed.png \
+		--out gallery/judge-demo-strong/detail_crop.png
+	@echo ""
+	@echo "═══════════════════════════════════════════════════════════════"
+	@echo ""
+	@echo "  ✓ done."
+	@echo ""
+	@echo "  🖼  Artifacts in gallery/judge-demo-strong/:"
+	@echo "     - side_by_side.png  (target | cold | primed with metrics strip)"
+	@echo "     - detail_crop.png   (4× zoom on the biggest delta region)"
+	@echo "     - run_cold.png · run_primed.png"
+	@echo "     - summary.json       (full numeric trace)"
+	@echo ""
+	@echo "═══════════════════════════════════════════════════════════════"
 
 duet:
 	@test -n "$(TARGET)" || (echo "usage: make duet TARGET=targets/masterworks/mona_lisa.jpg [A=van_gogh_voice] [B=tenebrist_voice] [TURNS=6]"; exit 1)

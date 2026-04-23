@@ -27,8 +27,9 @@ reflections/*
 # directory is local-only.
 benches/
 
-# make judge-demo output artifact — reproduced per judge run, kept local only
+# make judge-demo output artifacts — reproduced per judge run, kept local only
 gallery/judge-demo/
+gallery/judge-demo-strong/
 targets/unsplash/
 targets/*.jpg
 targets/*.jpeg
