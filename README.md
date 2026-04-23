@@ -78,21 +78,34 @@ output — the same command anyone cloning the repo can reproduce:
 | **cold** | 0 | 0 | 0.25 (default) | **0.2974** | 2 326 |
 | **primed** | 5 | 1 | 0.28 (+0.03) | **0.2993** | 2 326 |
 
-Five priming paints on feature-nearest neighbors each write a
-reflection. `skill_promote` scans recurring `what_worked` phrases and
-distills three new skills: `promoted_style_mode_van_gogh`,
-`promoted_image_type_balanced`, and `promoted_saliency_mask`. Only the
-second of those is in-scope for great_wave's detected image_type
-(`balanced`), so exactly one skill applies to the primed run — biasing
-`contrast_boost` from the baseline `0.25` to `0.28`.
+**What the mechanism actually did** (from `gallery/learning/summary.json`):
 
-The SSIM delta at this seed is **+0.0019** — small but consistently
-positive. Not a dramatic cherry-picked leap: the memory arc is
-**gradual by design**, and what this run actually proves is that the
-whole mechanism ran end-to-end without being asked. 5 reflections
-written, 3 skills promoted, 1 applied to the primed paint's pipeline
-— all in one command, all committed to disk in the sandbox, all
-reproducible by rerunning `python scripts/demo_memory_arc.py --seed 7`.
+- **5 reflections written** into the sandbox during priming (one per
+  target: warhol_marilyn, rothko_purple_white_red, the_bedroom,
+  okeeffe_blue_green_music, american_gothic — the feature-nearest
+  neighbors of great_wave in the `balanced` image_type bucket).
+- **3 skills promoted** by `skill_promote`:
+  `promoted_style_mode_van_gogh`, `promoted_image_type_balanced`,
+  `promoted_saliency_mask`.
+- **1 skill applied** to the primed paint:
+  `promoted_image_type_balanced` (the only one whose scope matches
+  great_wave's detected image_type). Its `dimensional_effects` added
+  `contrast_boost: +0.03` to the pipeline's baseline.
+- **Pipeline parameters observably shifted.** Cold's `effective_params`
+  was `{}` (skill-feedback path skipped with `apply_feedback=False`);
+  primed's `effective_params` carried `contrast_boost=0.28`,
+  `complementary_shadow=0.12`, `style_mode=van_gogh`, plus the
+  provenance `deltas: {contrast_boost: +0.03}` — traceable all the way
+  back to the applied skill file in `sandbox/skills/`.
+- **SSIM delta +0.0019**, small but consistently positive at this seed.
+  The canvases are byte-level different (different contrast bias yields
+  different color sampling) even where phase-level stroke counts match.
+
+Not a dramatic cherry-picked leap: the memory arc is **gradual by
+design**, and what this run proves is that the whole mechanism ran
+end-to-end without the caller asking for anything beyond the target.
+All artifacts are committed to disk in the sandbox and reproducible via
+`python scripts/demo_memory_arc.py --seed 7`.
 
 ## Gallery — single paints, varied styles
 
@@ -115,63 +128,6 @@ set on 2026-04-22 (Apple M-series, headless Chromium, seed=42).
 Raw metrics in `gallery/summary.json`. SSIM numbers are the compass, not the
 goal — the scores above are representative of the 8-phase pipeline at its
 current baseline.
-
----
-
-## Also explored (experimental, secondary to the flagship above)
-
-Two experimental directions built on the same painter substrate. They
-showcase what the memory-arc infrastructure enables once the core loop
-is solid — not replacements for the flagship.
-
-### Style morph (experimental)
-
-The Hermes agent can now plan a *morph* between two styles for a run,
-via the `plan_style_schedule` tool in `/tool/manifest`. The canvas
-starts in one style and drifts into another across the 8-phase
-pipeline — Phase 1 interleaves strokes from both generators, Phases
-2-8 interpolate style parameters continuously.
-
-<p align="center">
-  <img src="./gallery/morph/morph_live.gif" width="384" alt="Live morph paint: The Great Wave painted van_gogh → pointillism across 5 iterations."/>
-  <br/>
-  <sub><i>Live iteration replay: <code>great_wave.jpg</code> painted <code>van_gogh → pointillism</code>. Target first, then each phase's canvas state in sequence.</i></sub>
-</p>
-
-Three demo rows, each shown next to a uniform-end control:
-
-| Target | Morph output | Uniform-end control | Schedule |
-|---|---|---|---|
-| `caravaggio_resurrection` | ![](./gallery/morph/caravaggio_van_gogh_to_tenebrism.png) | ![](./gallery/morph/caravaggio_van_gogh_to_tenebrism_uniform.png) | `van_gogh → tenebrism` |
-| `mona_lisa` | ![](./gallery/morph/mona_lisa_van_gogh_to_tenebrism.png) | ![](./gallery/morph/mona_lisa_van_gogh_to_tenebrism_uniform.png) | `van_gogh → tenebrism` |
-| `great_wave` | ![](./gallery/morph/great_wave_van_gogh_to_pointillism.png) | ![](./gallery/morph/great_wave_van_gogh_to_pointillism_uniform.png) | `van_gogh → pointillism` |
-
-Full rationales in [`gallery/morph/rationales.md`](./gallery/morph/rationales.md).
-
-### Collaborative duet (experimental)
-
-Two named *painter personas* alternate critique-and-correct turns on one
-canvas. Each persona has a `style_mode`, a weighted list of failure
-detectors it cares about, and a taste filter that picks which worst-cells
-it has "legitimate claim" to correct. Turns are rejected on SSIM
-regression, so the dialogue is committed to the journal honestly.
-
-<p align="center">
-  <img src="./gallery/duet/mona_lisa_vangogh_vs_tenebrist/turn_strip.png" width="720" alt="Three turns of a duet on Mona Lisa: van_gogh_voice opens, tenebrist_voice critiques, van_gogh_voice responds."/>
-  <br/>
-  <sub><i>Three turns of a duet on Mona Lisa: <code>van_gogh_voice</code> × <code>tenebrist_voice</code>. Panel 1 is the van_gogh opening; panels 2–3 alternate corrections. Plateau-detected after turn 3 (both personas converged).</i></sub>
-</p>
-
-Three demo duets, each shown next to its solo-opening control:
-
-| Target | Duet | Solo control | Personas | Journal |
-|---|---|---|---|---|
-| `mona_lisa` | ![](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/canvas.png) | ![](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/control.png) | `van_gogh_voice × tenebrist_voice` | [📝](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/duet_journal.md) |
-| `great_wave` | ![](./gallery/duet/great_wave_vangogh_vs_pointillist/canvas.png) | ![](./gallery/duet/great_wave_vangogh_vs_pointillist/control.png) | `van_gogh_voice × pointillist_voice` | [📝](./gallery/duet/great_wave_vangogh_vs_pointillist/duet_journal.md) |
-| `caravaggio` | ![](./gallery/duet/caravaggio_tenebrist_vs_vangogh/canvas.png) | ![](./gallery/duet/caravaggio_tenebrist_vs_vangogh/control.png) | `tenebrist_voice × van_gogh_voice` | [📝](./gallery/duet/caravaggio_tenebrist_vs_vangogh/duet_journal.md) |
-
-New tools in the manifest: `paint_duet`, `list_personas`.
-Persona library: [`personas/README.md`](./personas/README.md).
 
 ## Architecture
 
@@ -197,6 +153,14 @@ Persona library: [`personas/README.md`](./personas/README.md).
 - `scripts/paint_lib/` → the reusable multi-phase `auto_paint` pipeline (phases split under `phases_pkg/`); also exposes `paint_duet` and the morph scheduler
 - All of `src/painter/*.py` → shared infrastructure (renderer, critic, skills, journal, style)
 - `tests/test_renderer_parity.py` → pixel-MAE check across 12 stroke fixtures between `local_renderer.py` and `canvas/index.html`
+
+> **Single-session architecture.** The viewer is a `ThreadingHTTPServer`
+> with a single global `STATE` dict, guarded by a `threading.Lock` for
+> paint-job entry and canvas mutations. That is sufficient for one local
+> session at a time — the intended model. Running two concurrent paint
+> sessions against the same viewer is not supported; use the memory-arc
+> demo's alt-port pattern (`--viewer-port`, `--tools-port`) if you need
+> an isolated second stack on the same machine.
 
 ## Quick start
 
@@ -259,6 +223,65 @@ The human opens `http://127.0.0.1:8080` to watch strokes land in real
 time. Click the easel canvas in the viewer to zoom in at native 512×512
 resolution. See [`AGENTS.md`](./AGENTS.md) for the agent runbook and
 [`HERMES.md`](./HERMES.md) for the full agent playbook.
+
+---
+
+## Also explored (experimental, built on the same substrate)
+
+Two experimental directions that build on the memory-arc pipeline. They
+are **supporting evidence**, not the flagship — the main story above is
+what this project is about.
+
+### Style morph (experimental)
+
+The Hermes agent can plan a *morph* between two styles for a run, via the
+`plan_style_schedule` tool. The canvas starts in one style and drifts
+into another across the 8-phase pipeline — Phase 1 interleaves strokes
+from both generators, Phases 2-8 interpolate style parameters
+continuously.
+
+<p align="center">
+  <img src="./gallery/morph/morph_live.gif" width="384" alt="Live morph paint: The Great Wave painted van_gogh → pointillism across 5 iterations."/>
+  <br/>
+  <sub><i>Live iteration replay: <code>great_wave.jpg</code> painted <code>van_gogh → pointillism</code>.</i></sub>
+</p>
+
+Three demo rows, each shown next to a uniform-end control:
+
+| Target | Morph output | Uniform-end control | Schedule |
+|---|---|---|---|
+| `caravaggio_resurrection` | ![](./gallery/morph/caravaggio_van_gogh_to_tenebrism.png) | ![](./gallery/morph/caravaggio_van_gogh_to_tenebrism_uniform.png) | `van_gogh → tenebrism` |
+| `mona_lisa` | ![](./gallery/morph/mona_lisa_van_gogh_to_tenebrism.png) | ![](./gallery/morph/mona_lisa_van_gogh_to_tenebrism_uniform.png) | `van_gogh → tenebrism` |
+| `great_wave` | ![](./gallery/morph/great_wave_van_gogh_to_pointillism.png) | ![](./gallery/morph/great_wave_van_gogh_to_pointillism_uniform.png) | `van_gogh → pointillism` |
+
+Full rationales in [`gallery/morph/rationales.md`](./gallery/morph/rationales.md).
+
+### Collaborative duet (experimental)
+
+Two named *painter personas* alternate critique-and-correct turns on one
+canvas. Each persona has a `style_mode`, a weighted list of failure
+detectors, and a taste filter that picks which worst-cells it has
+"legitimate claim" to correct. Turns are rejected on SSIM regression, so
+the dialogue is committed to the journal honestly.
+
+<p align="center">
+  <img src="./gallery/duet/mona_lisa_vangogh_vs_tenebrist/turn_strip.png" width="720" alt="Three turns of a duet on Mona Lisa."/>
+  <br/>
+  <sub><i>Three turns of a duet on Mona Lisa: <code>van_gogh_voice</code> × <code>tenebrist_voice</code>. Panel 1 is the van_gogh opening; panels 2–3 alternate corrections.</i></sub>
+</p>
+
+Three demo duets, each shown next to its solo-opening control:
+
+| Target | Duet | Solo control | Personas | Journal |
+|---|---|---|---|---|
+| `mona_lisa` | ![](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/canvas.png) | ![](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/control.png) | `van_gogh_voice × tenebrist_voice` | [📝](./gallery/duet/mona_lisa_vangogh_vs_tenebrist/duet_journal.md) |
+| `great_wave` | ![](./gallery/duet/great_wave_vangogh_vs_pointillist/canvas.png) | ![](./gallery/duet/great_wave_vangogh_vs_pointillist/control.png) | `van_gogh_voice × pointillist_voice` | [📝](./gallery/duet/great_wave_vangogh_vs_pointillist/duet_journal.md) |
+| `caravaggio` | ![](./gallery/duet/caravaggio_tenebrist_vs_vangogh/canvas.png) | ![](./gallery/duet/caravaggio_tenebrist_vs_vangogh/control.png) | `tenebrist_voice × van_gogh_voice` | [📝](./gallery/duet/caravaggio_tenebrist_vs_vangogh/duet_journal.md) |
+
+New tools in the manifest: `paint_duet`, `list_personas`.
+Persona library: [`personas/README.md`](./personas/README.md).
+
+---
 
 ## The agent's loop
 

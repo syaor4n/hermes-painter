@@ -424,9 +424,26 @@ def paint_once(
     score = final.get("score") or {}
     canvas_png = _read_canvas_png(viewer_url)
 
+    # Per-phase stroke counts from auto_paint's result dict. These let the
+    # cold-vs-primed comparison be concrete even when the SSIM delta is
+    # small: the same total stroke count can redistribute across phases
+    # (e.g. more contour strokes, fewer fill) when a skill is active,
+    # which is what "learned technique" actually looks like inside the
+    # pipeline.
+    phases = {
+        "underpaint": int(result.get("underpaint_strokes", 0) or 0),
+        "edge": int(result.get("edge_strokes", 0) or 0),
+        "fill": int(result.get("fill_strokes", 0) or 0),
+        "mid_detail": int(result.get("mid_detail_strokes", 0) or 0),
+        "fine_detail": int(result.get("fine_detail_strokes", 0) or 0),
+        "contour": int(result.get("contour_strokes", 0) or 0),
+        "highlight": int(result.get("highlight_strokes", 0) or 0),
+    }
+
     return {
         "ssim": float(score.get("ssim") or 0.0),
         "n_strokes": int(final.get("strokes_applied", 0)),
+        "phases": phases,
         "applied_skills": list(result.get("applied_skills") or []),
         "effective_params": dict(result.get("effective_params") or {}),
         "canvas_png": canvas_png,
@@ -587,6 +604,7 @@ def main(argv: list[str] | None = None) -> int:
             "cold": {
                 "ssim": cold["ssim"],
                 "n_strokes": cold["n_strokes"],
+                "phases": cold["phases"],
                 "applied_skills": cold["applied_skills"],
                 "effective_params": cold["effective_params"],
                 "elapsed_s": cold["elapsed_s"],
@@ -594,6 +612,7 @@ def main(argv: list[str] | None = None) -> int:
             "primed": {
                 "ssim": primed["ssim"],
                 "n_strokes": primed["n_strokes"],
+                "phases": primed["phases"],
                 "applied_skills": primed["applied_skills"],
                 "effective_params": primed["effective_params"],
                 "elapsed_s": primed["elapsed_s"],
@@ -601,6 +620,10 @@ def main(argv: list[str] | None = None) -> int:
             "delta": {
                 "ssim": round(primed["ssim"] - cold["ssim"], 4),
                 "applied_skills_count": len(primed["applied_skills"]),
+                "phases": {
+                    k: primed["phases"].get(k, 0) - cold["phases"].get(k, 0)
+                    for k in sorted(set(primed["phases"]) | set(cold["phases"]))
+                },
                 "effective_params": {
                     k: round(float(primed["effective_params"].get(k, 0) or 0) - float(cold["effective_params"].get(k, 0) or 0), 4)
                     for k in ("contrast_boost", "complementary_shadow", "critique_rounds", "painterly_details")
