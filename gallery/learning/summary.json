@@ -77,15 +77,6 @@
   "delta": {
     "ssim": 0.0019,
     "applied_skills_count": 1,
-    "phases": {
-      "contour": 0,
-      "edge": 0,
-      "fill": 0,
-      "fine_detail": 0,
-      "highlight": 0,
-      "mid_detail": 0,
-      "underpaint": 0
-    },
     "effective_params": {
       "contrast_boost": 0.28,
       "complementary_shadow": 0.12,

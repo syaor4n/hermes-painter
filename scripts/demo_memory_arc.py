@@ -196,6 +196,80 @@ def make_sandbox(root: Path) -> dict[str, Path]:
     }
 
 
+def _format_metrics_strip(summary: dict[str, Any] | None) -> list[str]:
+    """Build 1-3 lines of qualitative proof from a demo summary dict.
+
+    Returns plain-text lines suitable for the side-by-side's bottom strip.
+    Empty list if no summary is available.
+    """
+    if not summary:
+        return []
+
+    cold = summary.get("cold") or {}
+    primed = summary.get("primed") or {}
+    delta = summary.get("delta") or {}
+
+    lines: list[str] = []
+
+    # Line 1: headline delta + skill state transition.
+    ssim_delta = delta.get("ssim", 0) or 0
+    cold_ssim = cold.get("ssim", 0) or 0
+    primed_ssim = primed.get("ssim", 0) or 0
+    n_cold_skills = len(cold.get("applied_skills") or [])
+    n_primed_skills = len(primed.get("applied_skills") or [])
+    lines.append(
+        f"SSIM {cold_ssim:.4f} → {primed_ssim:.4f}  (Δ{ssim_delta:+.4f})   "
+        f"applied skills {n_cold_skills} → {n_primed_skills}"
+    )
+
+    # Line 2: what learned skills drove the delta. Name them explicitly so
+    # the image carries its own provenance without needing summary.json.
+    applied = primed.get("applied_skills") or []
+    applied_names = []
+    for a in applied:
+        if isinstance(a, dict):
+            applied_names.append(a.get("name") or "unnamed")
+        else:
+            applied_names.append(str(a))
+
+    # The truthful skill-driven parameter shift lives inside
+    # primed.effective_params.deltas — that is what apply_skill_effects
+    # computed as the sum of per-skill dimensional_effects. Don't use
+    # the raw primed-minus-cold delta: cold's effective_params is empty
+    # (apply_feedback=False captures nothing), so that diff would read
+    # the pipeline DEFAULTS as skill shifts, overclaiming.
+    primed_ep = primed.get("effective_params") or {}
+    skill_deltas = primed_ep.get("deltas") if isinstance(primed_ep.get("deltas"), dict) else {}
+    ep_bits = []
+    for k, v in (skill_deltas or {}).items():
+        if isinstance(v, bool):
+            if v:
+                ep_bits.append(f"{k} enabled")
+        elif isinstance(v, (int, float)) and v != 0:
+            ep_bits.append(f"{k} {v:+.2f}")
+    if applied_names and ep_bits:
+        lines.append(
+            f"learned skills applied: {', '.join(applied_names)}   |   "
+            f"pipeline shift: {' · '.join(ep_bits)}"
+        )
+    elif applied_names:
+        lines.append(f"learned skills applied: {', '.join(applied_names)}")
+    elif ep_bits:
+        lines.append(f"pipeline shift: {' · '.join(ep_bits)}")
+
+    # Line 3: how many skills were promoted this run.
+    promoted = summary.get("promoted") or []
+    if promoted:
+        names = [p.get("name", "?") for p in promoted if isinstance(p, dict)]
+        lines.append(
+            f"3 new skills promoted from 5 priming reflections: {', '.join(names)}"
+            if len(names) == 3
+            else f"{len(names)} new skill(s) promoted: {', '.join(names)}"
+        )
+
+    return lines
+
+
 def build_side_by_side(
     target_png: Path,
     cold_png: Path,
@@ -206,12 +280,19 @@ def build_side_by_side(
     panel_size: int = 512,
     gap: int = 16,
     label_band: int = 32,
+    summary: dict[str, Any] | None = None,
 ) -> None:
     """Compose target | cold | primed panels horizontally with labels.
 
     All three images are resized to panel_size x panel_size. A header strip
     (if given) runs across the top. A label band runs across the bottom with
     "target / cold / primed (after 5 priming runs)".
+
+    When `summary` is provided, a metrics strip below the labels spells out
+    the cold→primed delta in plain English (SSIM, applied-skill names,
+    pipeline parameter shifts, promoted-skill count). This makes the
+    artifact carry its own proof without requiring the viewer to open
+    `summary.json`.
     """
     from PIL import Image, ImageDraw, ImageFont  # imported lazily so tests that
                                                   # don't need PIL still load fast
@@ -223,16 +304,24 @@ def build_side_by_side(
     imgs = [_load_square(target_png), _load_square(cold_png), _load_square(primed_png)]
     labels = ["target", "cold", "primed (after 5 priming runs)"]
 
+    metrics_lines = _format_metrics_strip(summary)
+    metrics_band = 0
+    metrics_line_height = 22
+    if metrics_lines:
+        metrics_band = metrics_line_height * len(metrics_lines) + 14
+
     header_h = label_band if header else 0
     total_w = 3 * panel_size + 2 * gap
-    total_h = panel_size + label_band + header_h
+    total_h = panel_size + label_band + header_h + metrics_band
 
     canvas = Image.new("RGB", (total_w, total_h), (240, 240, 240))
 
     try:
         font = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
+        metrics_font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 14)
     except OSError:
         font = ImageFont.load_default()
+        metrics_font = font
 
     draw = ImageDraw.Draw(canvas)
 
@@ -252,6 +341,26 @@ def build_side_by_side(
             fill=(40, 40, 40),
             font=font,
         )
+
+    # Metrics strip — qualitative proof underneath the labels.
+    if metrics_lines:
+        strip_y0 = header_h + panel_size + label_band
+        draw.rectangle(
+            [0, strip_y0, total_w, strip_y0 + metrics_band],
+            fill=(250, 248, 244),
+        )
+        draw.line(
+            [0, strip_y0, total_w, strip_y0],
+            fill=(210, 205, 195),
+            width=1,
+        )
+        for i, line in enumerate(metrics_lines):
+            draw.text(
+                (gap * 2, strip_y0 + 10 + i * metrics_line_height),
+                line,
+                fill=(55, 55, 70),
+                font=metrics_font,
+            )
 
     canvas.save(out_path)
 
@@ -581,13 +690,35 @@ def main(argv: list[str] | None = None) -> int:
 
         # ARTIFACTS
         print("\n[demo] writing artifacts...")
+        final_feats = _classify_png(args.target)
+        # Build a minimal summary with just what the side-by-side metrics
+        # strip needs. The full summary below carries everything else.
+        side_by_side_summary = {
+            "cold": {
+                "ssim": cold["ssim"],
+                "applied_skills": cold["applied_skills"],
+            },
+            "primed": {
+                "ssim": primed["ssim"],
+                "applied_skills": primed["applied_skills"],
+            },
+            "delta": {
+                "ssim": round(primed["ssim"] - cold["ssim"], 4),
+                "effective_params": {
+                    k: round(float(primed["effective_params"].get(k, 0) or 0) - float(cold["effective_params"].get(k, 0) or 0), 4)
+                    for k in ("contrast_boost", "complementary_shadow", "critique_rounds", "painterly_details")
+                    if k in primed["effective_params"] or k in cold["effective_params"]
+                },
+            },
+            "promoted": promoted_list,
+        }
         build_side_by_side(
             args.target, out_dir / "run_cold.png", out_dir / "run_primed.png",
             out_dir / "side_by_side.png",
             header=_format_header(args.target, args.style_mode, args.seed),
+            summary=side_by_side_summary,
         )
 
-        final_feats = _classify_png(args.target)
         summary = {
             "ts": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds").replace("+00:00", "Z"),
             "target": str(args.target.relative_to(_ROOT) if args.target.is_absolute() and str(args.target).startswith(str(_ROOT)) else args.target),
@@ -620,10 +751,23 @@ def main(argv: list[str] | None = None) -> int:
             "delta": {
                 "ssim": round(primed["ssim"] - cold["ssim"], 4),
                 "applied_skills_count": len(primed["applied_skills"]),
-                "phases": {
-                    k: primed["phases"].get(k, 0) - cold["phases"].get(k, 0)
-                    for k in sorted(set(primed["phases"]) | set(cold["phases"]))
-                },
+                # delta.phases is only included when any phase actually
+                # changed. Skills like contrast_boost bias color sampling
+                # without shifting phase selection, so emitting a row of
+                # zeros would read as "nothing changed" and undersell
+                # what actually happened (see delta.effective_params).
+                **({
+                    "phases": {
+                        k: v for k, v in (
+                            (k, primed["phases"].get(k, 0) - cold["phases"].get(k, 0))
+                            for k in sorted(set(primed["phases"]) | set(cold["phases"]))
+                        )
+                        if v != 0
+                    }
+                } if any(
+                    primed["phases"].get(k, 0) != cold["phases"].get(k, 0)
+                    for k in set(primed["phases"]) | set(cold["phases"])
+                ) else {}),
                 "effective_params": {
                     k: round(float(primed["effective_params"].get(k, 0) or 0) - float(cold["effective_params"].get(k, 0) or 0), 4)
                     for k in ("contrast_boost", "complementary_shadow", "critique_rounds", "painterly_details")

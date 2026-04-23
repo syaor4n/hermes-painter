@@ -106,20 +106,29 @@ judge-demo: clean-servers
 		busy=$$(curl -s http://127.0.0.1:$(PORT_VIEWER)/api/state | $(PYTHON) -c "import sys,json; print(json.load(sys.stdin).get('busy'))" 2>/dev/null); \
 		if [ "$$busy" = "False" ]; then done_ok=1; break; fi; \
 	done; \
+	@mkdir -p gallery/judge-demo
 	if [ "$$done_ok" = "1" ]; then \
 		echo "  ✓ paint completed"; \
 		curl -s http://127.0.0.1:$(PORT_VIEWER)/api/state | $(PYTHON) -c "\
-import sys,json; \
+import sys,json,base64,pathlib; \
 s=json.load(sys.stdin); \
 sc=s.get('score') or {}; \
 ssim=round(sc.get('ssim',0),4); \
 strokes=s.get('strokes_applied',0); \
 iter_=s.get('iteration',0); \
 job=s.get('job_status','unknown'); \
+out=pathlib.Path('gallery/judge-demo'); \
+out.mkdir(parents=True, exist_ok=True); \
+canvas_b64=s.get('canvas_png') or ''; \
+result=out/'result.png'; \
+result.write_bytes(base64.b64decode(canvas_b64)) if canvas_b64 else None; \
+meta=out/'result.json'; \
+meta.write_text(json.dumps({'target':'targets/masterworks/great_wave.jpg','iterations':iter_,'strokes':strokes,'ssim':ssim,'job_status':job}, indent=2)); \
 print(f'    iterations: {iter_}'); \
 print(f'    strokes:    {strokes}'); \
 print(f'    SSIM:       {ssim}'); \
-print(f'    job_status: {job}')"; \
+print(f'    job_status: {job}'); \
+print(f'    artifact:   {result} ({result.stat().st_size//1024} KB)' if result.exists() else '    artifact:   (none — canvas empty)')"; \
 	else \
 		echo "  ⚠ paint did not finish in 24s — check /tmp/painter-demo/*.log"; \
 	fi
@@ -135,6 +144,7 @@ print(f'    job_status: {job}')"; \
 	@echo '     hermes "paint targets/masterworks/the_bedroom.jpg in van_gogh style"'
 	@echo '     hermes "run paint_duet on targets/masterworks/mona_lisa.jpg with van_gogh_voice and tenebrist_voice"'
 	@echo ""
+	@echo "  🖼  Standalone artifact: gallery/judge-demo/result.png (+ result.json)"
 	@echo "  📜 More demo prompts:   AGENTS.md"
 	@echo "  📋 Full agent playbook: HERMES.md"
 	@echo "  📂 Logs:                /tmp/painter-demo/{viewer,tools}.log"

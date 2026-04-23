@@ -26,6 +26,9 @@ reflections/*
 # Previously we kept per-run bench.json summaries tracked; now the whole
 # directory is local-only.
 benches/
+
+# make judge-demo output artifact — reproduced per judge run, kept local only
+gallery/judge-demo/
 targets/unsplash/
 targets/*.jpg
 targets/*.jpeg

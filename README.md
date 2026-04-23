@@ -17,6 +17,17 @@ inspectable memory.** This is a testbed where every skill learned, every
 reflection written, every parameter shift is committed to disk,
 human-readable, and reproducible in one command.
 
+**Concrete use case — art education.** A teacher loads a masterwork
+from `targets/masterworks/`, clicks Paint, and the class watches the
+agent build the image stroke by stroke on the browser canvas. Each
+phase (underpaint, edges, fill, contours, highlights) is narrated by
+the agent's own journal; students can open `skills/` to see which
+techniques the agent has accumulated over prior sessions and read the
+first-person `style/signature.md` to understand how its voice evolves.
+Unlike a black-box image generator, every choice is inspectable — and
+every student critique can target a specific skill file, a specific
+phase, or a specific stroke.
+
 An agent paints on a 512×512 HTML canvas stroke by stroke. After each
 run it writes a reflection; a `skill_promote` pass distills recurring
 patterns into skills with numeric parameter deltas; on the next run those
@@ -283,293 +294,75 @@ Persona library: [`personas/README.md`](./personas/README.md).
 
 ---
 
-## The agent's loop
+## Deep dive
 
-Implemented by the CLI agent in conversation. Each action is one HTTP call.
+The details below stay compact. Each link points at the source of truth
+for anyone who wants to inspect a specific subsystem — the README is
+not the place to duplicate what's already live in a tool manifest, a
+module docstring, or a test file.
 
-For exploratory painting:
+### The agent's loop
 
-```
-1. load_target(path)        → classification + upload target to the viewer
-2. analyze_target()         → one-shot strategy dict (grid/direction/fog/complexity)
-3. list_skills(image_type)  → scoped prior techniques
-4. read_style() / list_journal(n=8)
+`load_target → analyze_target → list_skills → (get_regions → score_plan
+→ snapshot → draw_strokes → dump_canvas + Read → restore_if_bad) ×
+iterate → save_skill + save_journal_entry`. Full annotated sequence,
+including the 8-phase `auto_paint` pipeline (underpainting → fog →
+edges → gap-fill → mid/fine detail → contours → highlights →
+critique-correct), lives in [`HERMES.md`](./HERMES.md).
 
-Repeat until good enough:
-5. get_regions(top=16)      → 8×8 cells sorted by error, with target/current RGB
-6. dump_heatmap() + Read    → visually inspect error distribution
-7. score_plan({strokes})    → IMAGINE a plan (render locally, return delta_ssim)
-8. snapshot()               → restore point
-9. draw_strokes({strokes})  → apply, get new score
-10. dump_canvas() + Read    → visually inspect your work
-11. restore(id)             → rollback if a plan regressed
+### Tool manifest (49 tools)
 
-Finally:
-12. save_skill / save_journal_entry / update_style
-```
-
-For one-shot painting in the painter's own style, `scripts/paint_lib.auto_paint()`
-orchestrates an 8-phase pipeline the CLI can invoke directly:
-
-```
-Phase 0  saliency_mask           → foreground/background mask (optional)
-Phase 1  underpainting           → grid-sampled bristle brush
-                                   (per-cell angle via direction_field_grid,
-                                    per-region palette via segment_regions,
-                                    tanh contrast boost)
-Phase 2  fog                     → atmospheric gradient (subject-dependent)
-Phase 3  edge_stroke_plan        → smooth brush following moderate edges
-Phase 4  gap-fill                → if coverage < 95 %
-Phase 5  detail_stroke_plan ×2   → mid (α 0.55, contrast) + fine (α 0.95, dark)
-Phase 6  contour_stroke_plan     → Canny skeletons as bezier curves
-Phase 7  highlight_stroke_plan   → warm bright dabs at local maxima
-Phase 8  critique_correct        → touch-up passes on worst-error cells (opt.)
-```
-
-## Tool manifest
+The tool server ships a live, machine-readable manifest — always
+authoritative, never drifts from code:
 
 ```bash
 curl localhost:8765/tool/manifest
 ```
 
-**Core (canvas I/O):**
-| Tool | Purpose |
-|------|---------|
-| `load_target` | Upload an image + get classification |
-| `draw_strokes` | Apply a plan (batch) and get the new score |
-| `score_plan` | Imagine a plan locally — returns `imagined.ssim` and `delta_ssim` |
-| `clear`, `snapshot`, `restore` | Reset / save / roll back the canvas |
-| `get_state`, `get_heatmap`, `get_regions` | Live state + error signal |
+Categories: canvas I/O (`draw_strokes`, `score_plan`, `snapshot`,
+`restore`), visual inspection (`dump_canvas`, `dump_heatmap`,
+`get_regions`, `sample_target`), target analysis (`analyze_target`,
+`saliency_mask`, `segment_regions`), stroke planners
+(`edge_stroke_plan`, `detail_stroke_plan`, `contour_stroke_plan`,
+`highlight_stroke_plan`), agent memory (`list_skills`, `save_skill`,
+`list_journal`, `record_reflection`, `skill_promote`, `read_style`,
+`update_style`). Duet + morph: `paint_duet`, `list_personas`,
+`plan_style_schedule`.
 
-**Visual inspection (agent must LOOK):**
-| Tool | Purpose |
-|------|---------|
-| `dump_canvas`, `dump_target`, `dump_heatmap`, `dump_all` | Write PNGs to `/tmp/` for the agent's `Read` tool |
-| `sample_target` | Mean color at (x,y,w,h) on the target |
-| `sample_grid` | Batch-sample all cells of a gx×gy grid in one call |
-| `find_features` | Sun / horizon / darkest-region / warmth / rule-of-thirds |
-| `get_palette` | Top-N dominant colors |
-| `dump_gaps` | Target-aware coverage mask + fraction painted |
+### Stroke vocabulary
 
-**Target analysis (strategy):**
-| Tool | Purpose |
-|------|---------|
-| `edge_map` | Sobel edges + subject-region bbox + edge density |
-| `gradient_field` | Quadrant-vote dominant direction (horizontal/vertical/random) |
-| `direction_field_grid` | Per-cell angle + coherence (structure tensor) |
-| `saliency_mask` | Laplacian-variance foreground mask → `/tmp/painter_saliency.png` |
-| `segment_regions` | SLIC super-pixels + per-region palette + dominant angle |
-| `analyze_target` | One-shot strategy dict used by `paint_lib.auto_paint` |
+11 types — `fill_rect`, `fill_circle`, `fill_poly`, `line`, `polyline`,
+`bezier`, `brush` (smooth or bristle), `dab`, `splat`, `fog`, `glow` —
+mirrored byte-for-byte between `canvas/index.html` (browser) and
+`src/painter/local_renderer.py` (PIL). Parity enforced by
+[`tests/test_renderer_parity.py`](./tests/test_renderer_parity.py).
+All strokes: 512×512 canvas, `#RRGGBB` colors, optional `alpha` (0–1).
 
-**Stroke plans (no application, just plan generation):**
-| Tool | Purpose |
-|------|---------|
-| `edge_stroke_plan` | Brush strokes following moderate-percentile edges (auto budget 40–250) |
-| `detail_stroke_plan` | Thin polylines on strong edges (mask-aware) |
-| `contour_stroke_plan` | Canny skeleton tracing → bezier curves (mask-aware) |
-| `highlight_stroke_plan` | Warm bright dabs at local maxima (mask-aware) |
+### Skills (YAML frontmatter)
 
-**Agent memory:**
-| Tool | Purpose |
-|------|---------|
-| `list_skills`, `save_skill` | YAML-frontmatter skill library (scope, tags, confidence) |
-| `list_journal`, `save_journal_entry` | Cross-run causal log |
-| `read_style`, `update_style` | Persistent style signature |
+Each skill is a markdown file with frontmatter: `scope.image_types`,
+`tags`, `confidence`, `provenance`, and optional `dimensional_effects`
+that sum numeric deltas into the pipeline (`contrast_boost`,
+`critique_rounds`, `painterly_details_bias`, per-style biases).
+`src/painter/skills.py` is the loader; it scope-filters at load time
+and caps the full library at 6 KB of prompt context. Examples:
+[`skills/*.md`](./skills).
 
-## Stroke vocabulary
+### Viewer HTTP API (port 8080)
 
-Implemented by `canvas/index.html` and mirrored by `src/painter/local_renderer.py`:
-
-```
-{"type": "fill_rect",   "x", "y", "w", "h", "color"}
-{"type": "fill_circle", "x", "y", "r", "color"}
-{"type": "fill_poly",   "points": [[x,y]…], "color"}
-{"type": "polyline",    "points": [[x,y]…], "color", "width"}
-{"type": "line",        "points": [[x0,y0],[x1,y1]], "color", "width"}
-{"type": "bezier",      "points": [p0, c1, c2, p1], "color", "width"}
-{"type": "brush",       "points": [[x,y]…], "color", "width",
-                        "texture": "bristle"|"smooth"}            # bristle = real paint
-{"type": "dab",         "x", "y", "w", "h", "angle", "color"}     # oriented ellipse
-{"type": "splat",       "x", "y", "r", "color", "count"}          # clustered dots
-{"type": "fog",         "x", "y", "w", "h", "color",
-                        "direction": "horizontal"|"vertical"|"radial",
-                        "fade"}                                   # atmospheric gradient
-{"type": "glow",        "x", "y", "r", "color"|"stops"}           # radial gradient
-```
-
-Optional `alpha` (0–1). Colors are `#RRGGBB`. Canvas is 512×512. Origin top-left.
-Per-type alpha defaults (matching the canvas JS): `brush`=0.85, `dab`=0.9,
-`splat`=0.7, everything else=1.0.
-
-## Skills with YAML frontmatter
-
-```markdown
----
-scope:
-  image_types: [balanced]
-  exclude: [night]
-provenance:
-  run: 20260420_162504_sunset
-  delta_ssim: 0.6859
-  target: targets/sunset.jpg
-confidence: 3
-tags: [sunset, warm, gradient]
----
-For balanced/warm sunset targets, the big SSIM win comes from two
-coarse fill_rect: warm top band + dark band. Detailed gradients via
-multiple thin bands REGRESSES SSIM — the metric penalizes structured
-edges that don't exist in smooth target gradients.
-```
-
-The loader:
-- filters out legacy per-run critique files by name pattern;
-- keeps only skills whose scope matches the target's image type;
-- caps per-skill body at 800 chars, total context at 6 KB;
-- sorts: frontmatter skills first, then by `confidence` desc.
-
-## Layout
-
-```
-painter/
-├── canvas/index.html                 # window.painter.{clear, drawStroke, drawStrokes,
-│                                     #   snapshot, restore, dropSnapshot, getPNG}
-├── src/painter/
-│   ├── browser.py                    # Playwright wrapper (batch + snapshot)
-│   ├── critic.py                     # SSIM, MS-SSIM, MSE, heatmap, regions, score_plan
-│   ├── executor.py                   # one-call batch stroke application
-│   ├── image_type.py                 # 5-class classifier for skill scoping
-│   ├── journal.py                    # cross-run JSONL ledger
-│   ├── local_renderer.py             # PIL-based stroke simulator (parity with canvas)
-│   ├── reflection.py                 # end-of-run heuristic skill writer
-│   ├── skills.py                     # YAML frontmatter + scope filter + confidence
-│   └── style.py                      # persistent style signature
-├── scripts/
-│   ├── viewer.py                     # canvas + human UI + HTTP API on :8080
-│   ├── hermes_tools.py               # tool server on :8765 for the CLI agent
-│   ├── paint_lib/                    # multi-phase pipeline + no-target brief mode
-│   ├── auto_paint.py                 # viewer-invoked wrapper over paint_lib
-│   ├── paint_live.py                 # legacy CLI bridge to the viewer
-│   ├── reflect.py                    # post-hoc skill writer for an existing run
-│   ├── timelapse.py                  # stitch step_*.png → timelapse.gif
-│   ├── demo_stroke.py                # sanity test
-│   └── make_test_target.py           # seed target
-├── skills/
-│   ├── *.md                          # techniques (YAML frontmatter for new ones)
-│   └── style/signature.md            # the painter's persistent style essay
-├── journal.jsonl                     # per-run causal log (created on first run)
-├── targets/                          # reference images to paint
-└── runs/                             # timelapse, plans, scores, traces
-```
-
-## Viewer HTTP API (port 8080)
-
-The tool server proxies most of these; the viewer is usable directly if
-you prefer a thinner agent.
-
-| Method | Path                 | Purpose                                             |
-|--------|----------------------|-----------------------------------------------------|
-| GET    | `/`                  | Live UI                                             |
-| GET    | `/api/state`         | Canvas b64 + score + history                        |
-| GET    | `/api/iteration/{N}` | Snapshot of iteration N                             |
-| GET    | `/api/target`        | Current target (b64)                                |
-| GET    | `/api/heatmap`       | PNG heatmap of \|target − current\|                 |
-| GET    | `/api/regions`       | Top 24 worst 8×8 cells with target/current means    |
-| POST   | `/api/stroke`        | Apply a single stroke spec                          |
-| POST   | `/api/plan`          | Apply `{"strokes":[…]}` in one batch                |
-| POST   | `/api/score_plan`    | Imagine a plan; return `{imagined: {...}}`          |
-| POST   | `/api/snapshot`      | Capture restore point → `{"id": …}`                 |
-| POST   | `/api/restore`       | Restore `{"id": …}`                                 |
-| POST   | `/api/clear`         | Reset canvas to white                               |
-| POST   | `/api/target`        | Set target (multipart upload or raw PNG)            |
-
-Server is `ThreadingHTTPServer`; snapshots are capped at 40 entries
-(oldest dropped). No auth — bind to localhost if untrusted.
-
-## Example: CLI agent driving a full painting
-
-```bash
-# 1. tell the viewer which image to paint
-curl -X POST localhost:8765/tool/load_target \
-  -d '{"path":"targets/sunset.jpg"}' -H 'Content-Type: application/json'
-
-# 2. get context
-curl -X POST localhost:8765/tool/list_skills \
-  -d '{"image_type":"balanced"}' -H 'Content-Type: application/json'
-curl -X POST localhost:8765/tool/get_regions \
-  -d '{"top":16}' -H 'Content-Type: application/json'
-
-# 3. imagine 2 candidate plans
-curl -X POST localhost:8765/tool/score_plan -d @plan_a.json
-curl -X POST localhost:8765/tool/score_plan -d @plan_b.json
-
-# 4. apply the winner
-curl -X POST localhost:8765/tool/draw_strokes -d @winner.json
-
-# 5. save what you learned
-curl -X POST localhost:8765/tool/save_skill -d @lesson.json
-curl -X POST localhost:8765/tool/save_journal_entry \
-  -d '{"run":"...","target":"targets/sunset.jpg","final_ssim":0.68,"note":"2-band coarse > gradient"}'
-```
-
-## Design philosophy
-
-The painter is not a pixel-matching engine — SSIM is a compass, not a goal.
-The agent is trusted to interpret the target, develop a style, and
-accumulate its own technique library. The infrastructure (imagination,
-rollback, scoped skills, journal, style signature) exists to make that
-trust safe: the agent can experiment without losing work, remember what
-worked, and articulate what it values.
-
-The choice to let the CLI's LLM be the planner — rather than embedding a
-second LLM call — keeps the repo dependency-free of any API, minimizes
-cost, and puts the full context of the conversation at the planner's
-disposal. When Claude Code paints, the same model that reads the user's
-request and plans strokes is also the one that wrote the skills it
-reads. That continuity is what makes a style possible.
-
-## Benchmarking
-
-```bash
-python scripts/timelapse.py runs/<your-run> --fps 3
-```
-
-For multi-target comparison, the CLI agent orchestrates:
-paint target A → save score → clear → paint target B → compare.
-There is no automated bench script because the "strategy" under test
-is the CLI agent's own judgement, which can't be called from Python
-without re-embedding an API.
+15 endpoints covering state, paint orchestration, plan scoring,
+snapshot/restore, target upload, heatmap, and the iteration replay.
+Full contract lives in the module docstring at the top of
+[`scripts/viewer.py`](./scripts/viewer.py). The tool server on :8765
+proxies most of these for agent callers; the viewer is directly
+usable if you prefer a thinner bridge.
 
 ## Project docs
 
 | File | What's in it |
 |---|---|
-| [`HERMES.md`](./HERMES.md) | Onboarding for the painting agent — loop, anti-patterns, style-signature semantics |
-| [`CHANGELOG.md`](./CHANGELOG.md) | Distilled v4→v15 history + Unreleased section |
-| [`skills/style/signature.md`](./skills/style/signature.md) | The painter's first-person style essay (it rewrites this itself) |
-| [`skills/*.md`](./skills) | YAML-frontmatter skill library, filtered at load time by image type |
-| [`journal.jsonl`](./journal.jsonl) | _(created on first run)_ — append-only cross-run causal log |
-
-## Roadmap (left open)
-
-Shipped between v5 and v9:
-
-- ✅ Saliency-based foreground/background mask
-- ✅ Per-cell stroke direction from local structure tensor
-- ✅ SLIC segmentation with per-region palette + angle
-- ✅ Canny-skeleton contour tracing as bezier curves
-- ✅ Highlight dabs at local maxima
-- ✅ Contrast S-curve in the underpainting
-- ✅ Critique-correct loop on worst-error cells
-- ✅ Best-of-N seeds
-- ✅ Animated iteration replay on the webui, with speed/pause/step controls
-- ✅ Pixel-parity tests between PIL and canvas renderers
-
-Open:
-
-- LAB-space k-means palette extraction (currently RGB-binned).
-- MCP server mode for the tool layer (currently plain HTTP + JSON).
-- Collaborative painters (two CLI agents with different styles taking turns).
-- OffscreenCanvas Worker to render bristle strokes off the main thread
-  (v9 batch-sample optimization already brought paint time from 9s → 3s,
-  reducing the payoff).
-- Full-vector SVG export.
+| [`HERMES.md`](./HERMES.md) | Full agent playbook — loop, 8-phase pipeline, anti-patterns, design philosophy, style-signature semantics |
+| [`AGENTS.md`](./AGENTS.md) | One-page runbook for Hermes / Claude Code, with paste-ready prompts |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Distilled version history |
+| [`skills/style/signature.md`](./skills/style/signature.md) | The painter's first-person style essay — it rewrites this itself |
+| [`skills/*.md`](./skills) | YAML-frontmatter skill library, scope-filtered at load time |
