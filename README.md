@@ -92,9 +92,9 @@ Full writeup: [`gallery/learning/comparison.md`](./gallery/learning/comparison.m
 ## Gallery — single paints, varied styles
 
 <p align="center">
-  <img src="./gallery/viewer_ui.png" width="720" alt="Live viewer UI — canvas (left) and target (right) with stats and paint controls."/>
+  <img src="./gallery/viewer_ui.png" width="720" alt="Live viewer in its atelier layout: the current canvas sits on an easel, the target hangs on the studio wall, a palette and brushes frame the scene. Controls below: test images, upload, style presets, paint/morph/duet, and dimensional-effects sliders."/>
   <br/>
-  <sub><i>The live viewer: canvas on the left fills in stroke-by-stroke against the target on the right. Stats + iteration replay + compare A/B on the side.</i></sub>
+  <sub><i>The atelier-styled live viewer. Canvas on the easel fills in stroke by stroke against the target on the wall. Sidebar: test images, style presets, paint/morph/duet controls, and the dimensional-effects sliders that skills bias. Right rail: iteration history, replay, and compare.</i></sub>
 </p>
 
 Produced by `scripts/gallery_build.py` against the `targets/masterworks/`
